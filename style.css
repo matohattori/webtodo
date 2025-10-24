@@ -1,32 +1,227 @@
-body{
-  background:#fff;
-  font-family: system-ui, -apple-system, Segoe UI, Roboto, 'Noto Sans JP', sans-serif;
-  display:flex; justify-content:center; margin-top:10px;
+@font-face {
+  font-family: 'Noto Sans JP';
+  src: url('fonts/NotoSansJP-VariableFont_wght.ttf') format('truetype');
+  font-weight: 100 900;
+  font-display: swap;
 }
-.container{
-  width:280px; padding:10px;
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
 }
-.input-area{ display:flex; margin-bottom:10px; }
-#taskInput{ flex:1; padding:4px; border:1px solid #ccc; border-radius:6px; }
-#addBtn{ margin-left:6px; padding:4px 10px; border:none; border-radius:8px; background:#4aa3ff; color:white; cursor:pointer; }
-#addBtn:hover{ opacity:.9; }
-ul{ padding-left:0; margin:0; }
-li{ list-style:none; margin:4px 0; display:flex; align-items:center; }
-li span{ flex:1; margin-left:6px; }
-li.completed span{ color:gray; text-decoration:line-through; }
-li input.task-edit {
-  flex:1;
-  margin-left:6px;
+
+body {
+  background: #FAFAFA;
+  font-family: 'Noto Sans JP', system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+  display: flex;
+  justify-content: center;
+  padding: 20px;
+  min-height: 100vh;
+}
+
+.container {
+  width: 100%;
+  max-width: 700px;
+  padding: 20px;
+  background: #FFFFFF;
+  border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+}
+
+ul {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+li {
+  position: relative;
+  display: flex;
+  align-items: center;
+  padding: 12px 8px;
+  border-bottom: 0.5px solid #E0E0E0;
+  transition: background-color 0.2s ease;
+  min-height: 48px;
+}
+
+li:hover {
+  background: #F0F0F0;
+}
+
+li:hover .drag-handle,
+li:hover .delete {
+  opacity: 1;
+}
+
+li.dragging {
+  opacity: 0.5;
+  background: #E8E8E8;
+}
+
+li.completed {
+  transition: opacity 0.3s ease;
+}
+
+li.completed input.task-edit {
+  color: #999;
+  text-decoration: line-through;
+}
+
+li.subtask {
+  padding-left: 48px;
+  background: #F9F9F9;
+}
+
+li.subtask:hover {
+  background: #F0F0F0;
+}
+
+/* Item type styles */
+li.heading input.task-edit {
+  font-size: 1.5em;
+  font-weight: 600;
   border: none;
-  border-bottom: 1px solid #ccc;
+  padding: 8px 4px;
+}
+
+li.divider {
+  padding: 0;
+  min-height: 1px;
+  border: none;
+  border-top: 1px solid #D0D0D0;
+  margin: 16px 0;
+  background: transparent;
+}
+
+li.divider:hover {
+  background: transparent;
+}
+
+/* Drag handle */
+.drag-handle {
+  cursor: grab;
+  color: #999;
+  font-size: 18px;
+  padding: 4px 8px;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+  user-select: none;
+  margin-right: 4px;
+}
+
+.drag-handle:active {
+  cursor: grabbing;
+}
+
+/* Checkbox */
+input[type="checkbox"] {
+  width: 20px;
+  height: 20px;
+  margin-right: 12px;
+  cursor: pointer;
+  accent-color: #4aa3ff;
+  flex-shrink: 0;
+}
+
+/* Task input */
+input.task-edit {
+  flex: 1;
+  border: none;
   background: transparent;
   font-size: 1em;
-  padding: 2px 4px;
+  padding: 4px;
   outline: none;
+  font-family: inherit;
+  color: #333;
 }
-li input.task-edit:disabled {
-  color: gray;
-  text-decoration: line-through;
-  background: transparent;
+
+input.task-edit:focus {
+  background: rgba(74, 163, 255, 0.05);
+  border-radius: 4px;
 }
-button.delete{ background:none; border:none; color:#e74c3c; font-size:16px; cursor:pointer; }
+
+input.task-edit:disabled {
+  cursor: not-allowed;
+}
+
+input.task-edit::placeholder {
+  color: #BBB;
+  font-style: italic;
+}
+
+/* Delete button */
+button.delete {
+  background: none;
+  border: none;
+  color: #e74c3c;
+  font-size: 20px;
+  cursor: pointer;
+  padding: 4px 8px;
+  opacity: 0;
+  transition: opacity 0.2s ease, color 0.2s ease;
+  margin-left: 8px;
+  flex-shrink: 0;
+}
+
+button.delete:hover {
+  color: #c0392b;
+}
+
+/* Type selector button (for shortcuts) */
+.type-menu {
+  position: absolute;
+  background: white;
+  border: 1px solid #E0E0E0;
+  border-radius: 4px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  padding: 8px 0;
+  z-index: 100;
+  display: none;
+}
+
+.type-menu.active {
+  display: block;
+}
+
+.type-menu button {
+  display: block;
+  width: 100%;
+  padding: 8px 16px;
+  border: none;
+  background: none;
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.type-menu button:hover {
+  background: #F0F0F0;
+}
+
+/* Mobile responsiveness */
+@media (max-width: 768px) {
+  .container {
+    padding: 12px;
+    border-radius: 0;
+  }
+  
+  li {
+    padding: 10px 4px;
+  }
+  
+  .drag-handle,
+  .delete {
+    opacity: 1;
+  }
+}
+
+/* Animations */
+@keyframes fadeOut {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0.3;
+  }
+}
