@@ -89,18 +89,38 @@ switch ($action) {
     $id = (int)($_POST['id'] ?? 0);
     $text = trim((string)($_POST['text'] ?? ''));
     $type = (string)($_POST['type'] ?? '');
-    if ($id && ($text !== '' || $type !== '')) {
-      if ($type !== '') {
-        $stmt = $db->prepare('UPDATE todos SET text = :text, type = :type WHERE id = :id');
-        $stmt->bindValue(':text', $text, SQLITE3_TEXT);
-        $stmt->bindValue(':type', $type, SQLITE3_TEXT);
-        $stmt->bindValue(':id', $id, SQLITE3_INTEGER);
-      } else {
-        $stmt = $db->prepare('UPDATE todos SET text = :text WHERE id = :id');
-        $stmt->bindValue(':text', $text, SQLITE3_TEXT);
-        $stmt->bindValue(':id', $id, SQLITE3_INTEGER);
+    $parent_id = isset($_POST['parent_id']) ? (($_POST['parent_id'] === '' || $_POST['parent_id'] === 'null') ? null : (int)$_POST['parent_id']) : null;
+    $updateParent = isset($_POST['parent_id']);
+    
+    if ($id) {
+      // Build dynamic SQL based on what fields are being updated
+      $updates = [];
+      $params = [];
+      
+      if ($text !== '' || $type !== '' || $updateParent) {
+        if ($text !== '') {
+          $updates[] = 'text = :text';
+          $params[':text'] = [$text, SQLITE3_TEXT];
+        }
+        if ($type !== '') {
+          $updates[] = 'type = :type';
+          $params[':type'] = [$type, SQLITE3_TEXT];
+        }
+        if ($updateParent) {
+          $updates[] = 'parent_id = :parent_id';
+          $params[':parent_id'] = [$parent_id, SQLITE3_INTEGER];
+        }
+        
+        if (count($updates) > 0) {
+          $sql = 'UPDATE todos SET ' . implode(', ', $updates) . ' WHERE id = :id';
+          $stmt = $db->prepare($sql);
+          foreach ($params as $key => $value) {
+            $stmt->bindValue($key, $value[0], $value[1]);
+          }
+          $stmt->bindValue(':id', $id, SQLITE3_INTEGER);
+          $stmt->execute();
+        }
       }
-      $stmt->execute();
     }
     break;
 

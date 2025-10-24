@@ -64,18 +64,15 @@ Outline/Notion 風のアウトライン UI をプレーン JavaScript で実装�
 - スクリーンリーダー対応
 
 ### 💾 データ保存
-- localStorage に自動保存
+- SQLite3 (PDO なし) に自動保存
 - ページリロード後も内容、並び、階層、チェック状態を保持
+- PHP ビルトインサーバーで動作
 
 ## 🚀 使い方
 
-1. このフォルダで Web サーバーを起動:
+1. このフォルダで PHP ビルトインサーバーを起動:
    ```bash
    php -S localhost:8000
-   ```
-   または
-   ```bash
-   python -m http.server 8000
    ```
 
 2. ブラウザで http://localhost:8000 を開く
@@ -95,14 +92,21 @@ Outline/Notion 風のアウトライン UI をプレーン JavaScript で実装�
 ## 📁 構成
 - `index.html` : UI 構造
 - `style.css`  : コンパクトデザインのスタイル
-- `script.js`  : フロントロジック（contenteditable、ドラッグ＆ドロップ、localStorage）
+- `script.js`  : フロントロジック（contenteditable、ドラッグ＆ドロップ、APIコール）
+- `api.php`    : CRUD + 並び替え API（SQLite3, PDOなし）
 - `fonts/`     : Noto Sans JP フォント
-- `api.php`    : レガシー API（使用されていません）
+- `todo.db`    : 初回アクセス時に自動生成（.gitignore 対象）
 
 ## 💡 技術スタック
 - **編集**: contenteditable とキーハンドリング
 - **D&D**: ネイティブ HTML5 Drag and Drop API（ハンドルベース）
-- **保存**: localStorage（同期層への差し替え可能）
+- **保存**: SQLite3（PDO なし）経由の API
 - **データ構造**: `{ id, type, text, checked, parentId, order }`
   - `type`: 'task' | 'heading' | 'divider'
   - `parentId`: サブタスクの親 ID
+
+## 🗄️ データベース
+既存のデータベースは自動的にマイグレーションされます。
+- `type`: アイテムの種類（task/heading/divider）
+- `sort_order`: 並び順
+- `parent_id`: サブタスクの親ID

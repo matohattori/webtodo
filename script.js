@@ -3,120 +3,155 @@
 // parentId: ID of parent task (for subtasks)
 
 let items = [];
-let nextId = 1;
 let undoStack = [];
 
 const list = document.getElementById('todoList');
 
-// Load from localStorage
-function loadItems() {
-  const saved = localStorage.getItem('todoItems');
-  if (saved) {
-    try {
-      const parsed = JSON.parse(saved);
-      items = parsed.items || [];
-      nextId = parsed.nextId || 1;
-    } catch (e) {
+// Load from SQLite3 via API
+function loadItems(callback) {
+  fetch('api.php?action=list', {cache: 'no-store'})
+    .then(r => r.json())
+    .then(data => {
+      items = data.map(row => ({
+        id: row.id,
+        type: row.type || 'task',
+        text: row.text || '',
+        checked: Number(row.done) === 1,
+        parentId: row.parent_id ? Number(row.parent_id) : null,
+        order: row.sort_order || 0
+      }));
+      render();
+      if (typeof callback === 'function') callback();
+    })
+    .catch(err => {
+      console.error('Failed to load items:', err);
       items = [];
-      nextId = 1;
-    }
+      render();
+    });
+}
+
+// Save operations use API endpoints
+// No general saveItems() - each operation calls its specific endpoint
+
+// Create new item via API
+function createItem(type = 'task', text = '', parentId = null, afterId = null, callback) {
+  text = text.trim();
+  if (!text && type !== 'divider') {
+    if (callback) callback();
+    return;
   }
-  render();
+  
+  const params = new URLSearchParams({text, type});
+  if (parentId) params.append('parent_id', parentId);
+  if (afterId) params.append('after_id', afterId);
+  
+  fetch('api.php?action=add', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8'},
+    body: params
+  })
+  .then(() => loadItems(callback))
+  .catch(err => console.error('Failed to create item:', err));
 }
 
-// Save to localStorage
-function saveItems() {
-  localStorage.setItem('todoItems', JSON.stringify({
-    items: items,
-    nextId: nextId
-  }));
-}
-
-// Create new item
-function createItem(type = 'task', text = '', parentId = null) {
-  const item = {
-    id: nextId++,
-    type: type,
-    text: text,
-    checked: false,
-    parentId: parentId,
-    order: items.length
-  };
-  items.push(item);
-  saveItems();
-  return item;
-}
-
-// Update item
-function updateItem(id, updates) {
+// Update item via API
+function updateItem(id, updates, callback) {
   const item = items.find(i => i.id === id);
-  if (item) {
-    Object.assign(item, updates);
-    saveItems();
+  if (!item) return;
+  
+  // Handle checked state separately
+  if (updates.checked !== undefined && Object.keys(updates).length === 1) {
+    const params = new URLSearchParams({
+      id: id.toString(),
+      done: updates.checked ? '1' : '0'
+    });
+    
+    fetch('api.php?action=toggle', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8'},
+      body: params
+    })
+    .then(() => loadItems(callback))
+    .catch(err => console.error('Failed to toggle item:', err));
+    return;
   }
+  
+  // Handle text, type, or parentId updates via edit endpoint
+  const params = new URLSearchParams({id: id.toString()});
+  
+  if (updates.text !== undefined) {
+    params.append('text', updates.text);
+  } else if (item.text) {
+    params.append('text', item.text);
+  }
+  
+  if (updates.type !== undefined) {
+    params.append('type', updates.type);
+  }
+  
+  if (updates.parentId !== undefined) {
+    params.append('parent_id', updates.parentId === null ? '' : updates.parentId.toString());
+  }
+  
+  fetch('api.php?action=edit', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8'},
+    body: params
+  })
+  .then(() => loadItems(callback))
+  .catch(err => console.error('Failed to update item:', err));
 }
 
-// Delete item
+// Delete item via API
 function deleteItem(id) {
   const index = items.findIndex(i => i.id === id);
   if (index !== -1) {
     undoStack.push({ action: 'delete', item: { ...items[index] } });
-    items.splice(index, 1);
-    // Also delete children
-    items = items.filter(i => i.parentId !== id);
-    saveItems();
-    render();
+    
+    const params = new URLSearchParams({id: id.toString()});
+    fetch('api.php?action=delete', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8'},
+      body: params
+    })
+    .then(() => {
+      // Also delete children on client side (server should handle this too)
+      return loadItems();
+    })
+    .catch(err => console.error('Failed to delete item:', err));
   }
 }
 
-// Undo last delete
+// Undo last delete (Note: This won't work perfectly with SQLite backend)
 function undoDelete() {
   if (undoStack.length > 0) {
     const lastAction = undoStack.pop();
     if (lastAction.action === 'delete') {
-      items.push(lastAction.item);
-      items.sort((a, b) => a.order - b.order);
-      saveItems();
-      render();
+      // Re-add the item via API
+      createItem(lastAction.item.type, lastAction.item.text, lastAction.item.parentId);
     }
   }
 }
 
-// Insert item at position
-function insertItemAfter(afterId, type = 'task', parentId = null) {
-  const afterIndex = items.findIndex(i => i.id === afterId);
-  const newOrder = afterIndex !== -1 ? items[afterIndex].order + 0.5 : items.length;
-  
-  const item = {
-    id: nextId++,
-    type: type,
-    text: '',
-    checked: false,
-    parentId: parentId,
-    order: newOrder
-  };
-  
-  items.push(item);
-  reorderItems();
-  saveItems();
-  return item;
+// Insert item at position via API
+function insertItemAfter(afterId, type = 'task', parentId = null, callback) {
+  createItem(type, '', parentId, afterId, callback);
 }
 
-// Reorder items based on DOM order
-function reorderItems() {
+// Reorder items based on DOM order via API
+function reorderItems(callback) {
   const lis = Array.from(list.querySelectorAll('li[data-id]'));
-  lis.forEach((li, index) => {
-    const id = parseInt(li.dataset.id);
-    const item = items.find(i => i.id === id);
-    if (item) {
-      item.order = index;
-      // Update parentId based on DOM nesting
-      const parent = li.parentElement.closest('li[data-id]');
-      item.parentId = parent ? parseInt(parent.dataset.id) : null;
-    }
-  });
-  items.sort((a, b) => a.order - b.order);
-  saveItems();
+  const order = lis.map(li => li.dataset.id);
+  
+  const params = new URLSearchParams({order: JSON.stringify(order)});
+  
+  fetch('api.php?action=reorder', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8'},
+    body: params
+  })
+  .then(() => loadItems(callback))
+  .catch(err => console.error('Failed to reorder items:', err));
 }
 
 // Render all items
@@ -223,9 +258,15 @@ function renderItem(item, parentLi = null) {
     addSubtaskBtn.setAttribute('aria-label', 'サブタスクを追加');
     addSubtaskBtn.addEventListener('click', (e) => {
       e.stopPropagation();
-      const newItem = insertItemAfter(item.id, 'task', item.id);
-      render();
-      focusItem(newItem.id);
+      insertItemAfter(item.id, 'task', item.id, () => {
+        // After item is created and loaded, focus on it
+        // Find the newly created item (last subtask of this parent)
+        const children = items.filter(i => i.parentId === item.id);
+        if (children.length > 0) {
+          const lastChild = children[children.length - 1];
+          setTimeout(() => focusItem(lastChild.id), 100);
+        }
+      });
     });
     li.appendChild(addSubtaskBtn);
   }
@@ -294,24 +335,25 @@ function handleSlashCommand(text, item, li, content) {
   if (text === '/t') {
     // Convert to task
     content.textContent = '';
-    updateItem(item.id, { type: 'task', text: '' });
-    render();
-    focusItem(item.id);
+    updateItem(item.id, { type: 'task', text: '' }, () => {
+      setTimeout(() => focusItem(item.id), 100);
+    });
   } else if (text === '/h') {
     // Convert to heading
     content.textContent = '';
-    updateItem(item.id, { type: 'heading', text: '' });
-    li.dataset.type = 'heading';
-    content.setAttribute('data-placeholder', '見出しを入力...');
+    updateItem(item.id, { type: 'heading', text: '' }, () => {
+      li.dataset.type = 'heading';
+      content.setAttribute('data-placeholder', '見出しを入力...');
+    });
   } else if (text === '/-' || text === '/- ') {
     // Create divider
-    updateItem(item.id, { type: 'divider', text: '' });
-    render();
-    // Focus next item
-    const nextItem = items.find(i => i.order > item.order && !i.parentId);
-    if (nextItem) {
-      focusItem(nextItem.id);
-    }
+    updateItem(item.id, { type: 'divider', text: '' }, () => {
+      // Focus next item
+      const nextItem = items.find(i => i.order > item.order && !i.parentId);
+      if (nextItem) {
+        setTimeout(() => focusItem(nextItem.id), 100);
+      }
+    });
   }
 }
 
@@ -351,13 +393,19 @@ function handleEnter(item, li) {
   const content = li.querySelector('.task-content');
   if (content) {
     const text = content.textContent.trim();
-    updateItem(item.id, { text: text });
+    if (text !== item.text) {
+      updateItem(item.id, { text: text });
+    }
   }
   
   // Create new item below
-  const newItem = insertItemAfter(item.id, 'task', item.parentId);
-  render();
-  focusItem(newItem.id);
+  insertItemAfter(item.id, 'task', item.parentId, () => {
+    // Focus on newly created item
+    const currentIndex = items.findIndex(i => i.id === item.id);
+    if (currentIndex !== -1 && currentIndex < items.length - 1) {
+      setTimeout(() => focusItem(items[currentIndex + 1].id), 100);
+    }
+  });
 }
 
 // Handle Tab (indent to subtask)
@@ -370,9 +418,9 @@ function handleIndent(item) {
     for (let i = index - 1; i >= 0; i--) {
       if (!items[i].parentId) {
         // Found a parent item
-        updateItem(item.id, { parentId: items[i].id });
-        render();
-        focusItem(item.id);
+        updateItem(item.id, { parentId: items[i].id }, () => {
+          setTimeout(() => focusItem(item.id), 100);
+        });
         return;
       }
     }
@@ -383,9 +431,9 @@ function handleIndent(item) {
 function handleUnindent(item) {
   if (!item.parentId) return; // Not a subtask
   
-  updateItem(item.id, { parentId: null });
-  render();
-  focusItem(item.id);
+  updateItem(item.id, { parentId: null }, () => {
+    setTimeout(() => focusItem(item.id), 100);
+  });
 }
 
 // Handle content blur
@@ -425,9 +473,13 @@ function addInsertBar(afterLi) {
     e.stopPropagation();
     const afterId = parseInt(afterLi.dataset.id);
     const afterItem = items.find(i => i.id === afterId);
-    const newItem = insertItemAfter(afterId, 'task', afterItem ? afterItem.parentId : null);
-    render();
-    focusItem(newItem.id);
+    insertItemAfter(afterId, 'task', afterItem ? afterItem.parentId : null, () => {
+      // Focus on newly created item
+      const currentIndex = items.findIndex(i => i.id === afterId);
+      if (currentIndex !== -1 && currentIndex < items.length - 1) {
+        setTimeout(() => focusItem(items[currentIndex + 1].id), 100);
+      }
+    });
   });
   
   insertBar.appendChild(insertBtn);
@@ -451,9 +503,12 @@ function addEmptyRow() {
     const text = content.textContent.trim();
     if (text) {
       // Create new item
-      const item = createItem('task', text);
-      render();
-      focusItem(item.id);
+      createItem('task', text, null, null, () => {
+        // Focus on newly created item (last one)
+        if (items.length > 0) {
+          setTimeout(() => focusItem(items[items.length - 1].id), 100);
+        }
+      });
     }
   });
   
@@ -462,9 +517,12 @@ function addEmptyRow() {
       e.preventDefault();
       const text = content.textContent.trim();
       if (text) {
-        const item = createItem('task', text);
-        render();
-        focusItem(item.id);
+        createItem('task', text, null, null, () => {
+          // Focus on newly created item (last one)
+          if (items.length > 0) {
+            setTimeout(() => focusItem(items[items.length - 1].id), 100);
+          }
+        });
       }
     }
   });
@@ -544,10 +602,9 @@ function setupSortable() {
       li.setAttribute('draggable', 'false');
       draggedElement = null;
       
-      // Reorder and re-render
+      // Reorder via API and re-render
       setTimeout(() => {
         reorderItems();
-        render();
       }, 50);
     });
     
