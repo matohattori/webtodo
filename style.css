@@ -1,11 +1,10 @@
 body{
-  background:#fffbe6;
+  background:#fff;
   font-family: system-ui, -apple-system, Segoe UI, Roboto, 'Noto Sans JP', sans-serif;
   display:flex; justify-content:center; margin-top:10px;
 }
 .container{
-  width:280px; background:#fffecf; border:1px solid #e0dca3;
-  border-radius:12px; padding:10px; box-shadow:2px 2px 8px rgba(0,0,0,.2);
+  width:280px; padding:10px;
 }
 .input-area{ display:flex; margin-bottom:10px; }
 #taskInput{ flex:1; padding:4px; border:1px solid #ccc; border-radius:6px; }
@@ -15,4 +14,19 @@ ul{ padding-left:0; margin:0; }
 li{ list-style:none; margin:4px 0; display:flex; align-items:center; }
 li span{ flex:1; margin-left:6px; }
 li.completed span{ color:gray; text-decoration:line-through; }
+li input.task-edit {
+  flex:1;
+  margin-left:6px;
+  border: none;
+  border-bottom: 1px solid #ccc;
+  background: transparent;
+  font-size: 1em;
+  padding: 2px 4px;
+  outline: none;
+}
+li input.task-edit:disabled {
+  color: gray;
+  text-decoration: line-through;
+  background: transparent;
+}
 button.delete{ background:none; border:none; color:#e74c3c; font-size:16px; cursor:pointer; }

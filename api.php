@@ -39,6 +39,17 @@ switch ($action) {
     $stmt->execute();
     break;
 
+  case 'edit':
+    $id = (int)($_POST['id'] ?? 0);
+    $text = trim((string)($_POST['text'] ?? ''));
+    if ($id && $text !== '') {
+      $stmt = $db->prepare('UPDATE todos SET text = :text WHERE id = :id');
+      $stmt->bindValue(':text', $text, SQLITE3_TEXT);
+      $stmt->bindValue(':id', $id, SQLITE3_INTEGER);
+      $stmt->execute();
+    }
+    break;
+
   case 'delete':
     $id = (int)($_POST['id'] ?? 0);
     $stmt = $db->prepare('DELETE FROM todos WHERE id = :id');
