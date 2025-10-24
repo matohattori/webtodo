@@ -18,12 +18,13 @@ body {
   justify-content: center;
   padding: 20px;
   min-height: 100vh;
+  font-size: 13px;
 }
 
 .container {
   width: 100%;
-  max-width: 700px;
-  padding: 20px;
+  max-width: 800px;
+  padding: 16px;
   background: #FFFFFF;
   border-radius: 8px;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
@@ -35,217 +36,303 @@ ul {
   margin: 0;
 }
 
+/* Compact list items - 28-32px height */
 li {
   position: relative;
   display: flex;
   align-items: center;
-  padding: 12px 8px;
-  border-bottom: 0.5px solid #E0E0E0;
-  transition: background-color 0.2s ease;
-  min-height: 48px;
+  padding: 4px 8px;
+  border-bottom: 0.5px solid #EFEFEF;
+  transition: background-color 0.15s ease;
+  min-height: 30px;
+  line-height: 1.4;
+  gap: 6px;
 }
 
 li:hover {
-  background: #F0F0F0;
+  background: #F8F8F8;
 }
 
 li:hover .drag-handle,
-li:hover .delete {
-  opacity: 1;
-}
-
-li.dragging {
-  opacity: 0.5;
-  background: #E8E8E8;
-}
-
-li.completed {
-  transition: opacity 0.3s ease;
-}
-
-li.completed input.task-edit {
-  color: #999;
-  text-decoration: line-through;
-}
-
-li.subtask {
-  padding-left: 56px;
-  background: #F9F9F9;
-  border-left: 3px solid #E0E0E0;
-  margin-left: 12px;
-}
-
-li.subtask:hover {
-  background: #EFEFEF;
-  border-left-color: #4aa3ff;
-}
-
-/* Add subtask button */
-.add-subtask {
-  background: none;
-  border: none;
-  color: #999;
-  font-size: 14px;
-  cursor: pointer;
-  padding: 4px 8px;
-  opacity: 0;
-  transition: opacity 0.2s ease;
-  margin-left: 8px;
-}
-
+li:hover .delete,
 li:hover .add-subtask {
   opacity: 1;
 }
 
-.add-subtask:hover {
-  color: #4aa3ff;
+li.dragging {
+  opacity: 0.4;
+  background: #E8E8E8;
 }
 
-/* Item type styles */
-li.heading input.task-edit {
-  font-size: 1.5em;
+li.completed {
+  opacity: 0.6;
+  transition: opacity 0.3s ease;
+}
+
+li.completed .task-content {
+  color: #999;
+  text-decoration: line-through;
+}
+
+/* Subtask styling - indented with subtle background */
+li.subtask {
+  padding-left: 36px;
+  background: #FAFAFA;
+  border-left: 2px solid #E0E0E0;
+  margin-left: 20px;
+}
+
+li.subtask:hover {
+  background: #F5F5F5;
+  border-left-color: #4aa3ff;
+}
+
+/* Heading styling - larger, bold */
+li[data-type="heading"] .task-content {
+  font-size: 15px;
   font-weight: 600;
-  border: none;
-  padding: 8px 4px;
+  color: #222;
 }
 
+/* Divider styling - thin line */
 li.divider {
   padding: 0;
   min-height: 1px;
+  height: 1px;
   border: none;
-  border-top: 1px solid #D0D0D0;
-  margin: 16px 0;
+  border-top: 1px solid #D5D5D5;
+  margin: 12px 0;
   background: transparent;
+  position: relative;
+  gap: 0;
 }
 
 li.divider:hover {
   background: transparent;
+  border-top-color: #BBB;
 }
 
-/* Drag handle */
+li.divider .drag-handle {
+  position: absolute;
+  left: 0;
+  top: -10px;
+  background: white;
+  padding: 2px 4px;
+}
+
+li.divider .delete {
+  position: absolute;
+  right: 0;
+  top: -12px;
+  background: white;
+  padding: 2px 6px;
+}
+
+/* Drag handle - left side */
 .drag-handle {
   cursor: grab;
-  color: #999;
-  font-size: 18px;
-  padding: 4px 8px;
+  color: #BBB;
+  font-size: 14px;
+  padding: 2px 4px;
   opacity: 0;
-  transition: opacity 0.2s ease;
+  transition: opacity 0.15s ease;
   user-select: none;
-  margin-right: 4px;
+  flex-shrink: 0;
 }
 
 .drag-handle:active {
   cursor: grabbing;
 }
 
-/* Checkbox */
+.drag-handle:hover {
+  color: #888;
+}
+
+/* Checkbox - compact */
 input[type="checkbox"] {
-  width: 20px;
-  height: 20px;
-  margin-right: 12px;
+  width: 16px;
+  height: 16px;
+  margin: 0;
   cursor: pointer;
   accent-color: #4aa3ff;
   flex-shrink: 0;
 }
 
-/* Task input */
-input.task-edit {
+/* Content editable - main text area */
+.task-content {
   flex: 1;
   border: none;
   background: transparent;
-  font-size: 1em;
-  padding: 4px;
+  font-size: 13px;
+  padding: 2px 4px;
   outline: none;
   font-family: inherit;
   color: #333;
+  min-height: 20px;
+  line-height: 1.5;
+  word-wrap: break-word;
+  white-space: pre-wrap;
 }
 
-input.task-edit:focus {
+.task-content:focus {
   background: rgba(74, 163, 255, 0.05);
-  border-radius: 4px;
+  border-radius: 3px;
+  outline: 1px solid rgba(74, 163, 255, 0.2);
 }
 
-input.task-edit:disabled {
+.task-content[contenteditable="false"] {
   cursor: not-allowed;
 }
 
-input.task-edit::placeholder {
+/* Placeholder for empty content */
+.task-content:empty:before {
+  content: attr(data-placeholder);
   color: #BBB;
   font-style: italic;
 }
 
-/* Delete button */
+/* Add subtask button */
+.add-subtask {
+  background: none;
+  border: none;
+  color: #BBB;
+  font-size: 13px;
+  cursor: pointer;
+  padding: 2px 6px;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+  flex-shrink: 0;
+  border-radius: 3px;
+}
+
+.add-subtask:hover {
+  color: #4aa3ff;
+  background: rgba(74, 163, 255, 0.1);
+}
+
+/* Delete button - right side */
 button.delete {
   background: none;
   border: none;
-  color: #e74c3c;
-  font-size: 20px;
+  color: #CCC;
+  font-size: 16px;
   cursor: pointer;
-  padding: 4px 8px;
+  padding: 2px 6px;
   opacity: 0;
-  transition: opacity 0.2s ease, color 0.2s ease;
-  margin-left: 8px;
+  transition: opacity 0.15s ease, color 0.15s ease;
   flex-shrink: 0;
+  border-radius: 3px;
 }
 
 button.delete:hover {
-  color: #c0392b;
+  color: #e74c3c;
+  background: rgba(231, 76, 60, 0.1);
 }
 
-/* Type selector button (for shortcuts) */
-.type-menu {
-  position: absolute;
-  background: white;
-  border: 1px solid #E0E0E0;
-  border-radius: 4px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
-  padding: 8px 0;
-  z-index: 100;
-  display: none;
-}
-
-.type-menu.active {
-  display: block;
-}
-
-.type-menu button {
-  display: block;
-  width: 100%;
-  padding: 8px 16px;
-  border: none;
-  background: none;
-  text-align: left;
+/* Insert bar between items */
+.insert-bar {
+  height: 2px;
+  background: transparent;
+  position: relative;
+  margin: 0;
+  transition: all 0.15s ease;
   cursor: pointer;
-  transition: background 0.2s;
 }
 
-.type-menu button:hover {
-  background: #F0F0F0;
+.insert-bar:hover {
+  height: 4px;
+  background: rgba(74, 163, 255, 0.1);
+}
+
+.insert-btn {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: #4aa3ff;
+  color: white;
+  border: none;
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+}
+
+.insert-bar:hover .insert-btn {
+  opacity: 1;
+}
+
+.insert-btn:hover {
+  background: #3590e0;
+  transform: translate(-50%, -50%) scale(1.1);
+}
+
+/* Empty row at bottom */
+.empty-row {
+  border-bottom: none;
+  min-height: 32px;
+}
+
+.empty-row .task-content:empty:before {
+  content: attr(data-placeholder);
+  color: #CCC;
+}
+
+/* Subtask list */
+ul.subtask-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
 }
 
 /* Mobile responsiveness */
 @media (max-width: 768px) {
+  body {
+    padding: 8px;
+    font-size: 12px;
+  }
+  
   .container {
-    padding: 12px;
-    border-radius: 0;
+    padding: 8px;
+    border-radius: 4px;
   }
   
   li {
-    padding: 10px 4px;
+    padding: 4px 6px;
+    min-height: 28px;
   }
   
   .drag-handle,
-  .delete {
-    opacity: 1;
+  .delete,
+  .add-subtask {
+    opacity: 0.5;
+  }
+  
+  .task-content {
+    font-size: 12px;
   }
 }
 
 /* Animations */
-@keyframes fadeOut {
+@keyframes fadeIn {
   from {
-    opacity: 1;
+    opacity: 0;
+    transform: translateY(-4px);
   }
   to {
-    opacity: 0.3;
+    opacity: 1;
+    transform: translateY(0);
   }
+}
+
+li {
+  animation: fadeIn 0.2s ease;
 }
