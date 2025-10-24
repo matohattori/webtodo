@@ -1,5 +1,6 @@
 // Data structure: { id, type, text, checked, parentId, order }
-// type: 'task' | 'subtask' | 'heading' | 'divider'
+// type: 'task' | 'heading' | 'divider'
+// parentId: ID of parent task (for subtasks)
 
 let items = [];
 let nextId = 1;
