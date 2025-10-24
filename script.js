@@ -27,11 +27,12 @@ function loadTodos(callback){
 
 
 // 新規タスクをサーバーに登録
-function addTask(text, type = 'task', parent_id = null, callback) {
+function addTask(text, type = 'task', parent_id = null, after_id = null, callback) {
   text = text.trim();
   if(!text && type !== 'divider') return;
   const params = new URLSearchParams({text, type});
   if(parent_id) params.append('parent_id', parent_id);
+  if(after_id) params.append('after_id', after_id);
   
   fetch('api.php?action=add',{
     method:'POST',
@@ -159,7 +160,9 @@ function addTaskElement(text, id, done, type = 'task', parent_id = null, focusNe
       if(!id && val !== '') {
         // 新規行で値が入っていればサーバー登録
         isSubmitting = true;
-        addTask(val, currentType, parent_id, () => {
+        // If this is a subtask being added after a parent, pass after_id
+        const afterId = parent_id && li.previousElementSibling ? li.previousElementSibling.dataset.id : null;
+        addTask(val, currentType, parent_id, afterId, () => {
           isSubmitting = false;
           // Focus on the new empty row added by loadTodos
           const emptyInputs = Array.from(list.querySelectorAll('input.task-edit')).filter(inp => !inp.value && !inp.closest('li').dataset.id);
@@ -202,6 +205,19 @@ function addTaskElement(text, id, done, type = 'task', parent_id = null, focusNe
   });
 
   li.appendChild(input);
+
+  // Add subtask button (only for tasks, not for headings or dividers, and not for subtasks themselves)
+  if(type === 'task' && !parent_id && id) {
+    const addSubtask = document.createElement('button');
+    addSubtask.textContent = '+';
+    addSubtask.className = 'add-subtask';
+    addSubtask.title = 'サブタスクを追加';
+    addSubtask.onclick = () => {
+      // Insert a new empty subtask row right after this task
+      addTaskElement('', null, false, 'task', id, true, li);
+    };
+    li.appendChild(addSubtask);
+  }
 
   // Delete button
   const del = document.createElement('button');

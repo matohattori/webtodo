@@ -48,10 +48,24 @@ switch ($action) {
     $text = trim((string)($_POST['text'] ?? ''));
     $type = (string)($_POST['type'] ?? 'task');
     $parent_id = isset($_POST['parent_id']) ? (int)$_POST['parent_id'] : null;
+    $after_id = isset($_POST['after_id']) ? (int)$_POST['after_id'] : null;
+    
     if ($text !== '' || $type === 'divider') {
-      // Get max sort_order and add 1
-      $maxOrder = $db->querySingle('SELECT MAX(sort_order) FROM todos');
-      $newOrder = ($maxOrder === null) ? 0 : $maxOrder + 1;
+      if ($after_id) {
+        // Insert after specific item - get its sort_order and increment all following items
+        $afterOrder = $db->querySingle("SELECT sort_order FROM todos WHERE id = {$after_id}");
+        if ($afterOrder !== null) {
+          $db->exec("UPDATE todos SET sort_order = sort_order + 1 WHERE sort_order > {$afterOrder}");
+          $newOrder = $afterOrder + 1;
+        } else {
+          $maxOrder = $db->querySingle('SELECT MAX(sort_order) FROM todos');
+          $newOrder = ($maxOrder === null) ? 0 : $maxOrder + 1;
+        }
+      } else {
+        // Get max sort_order and add 1
+        $maxOrder = $db->querySingle('SELECT MAX(sort_order) FROM todos');
+        $newOrder = ($maxOrder === null) ? 0 : $maxOrder + 1;
+      }
       
       $stmt = $db->prepare('INSERT INTO todos (text, done, type, sort_order, parent_id) VALUES (:text, 0, :type, :sort_order, :parent_id)');
       $stmt->bindValue(':text', $text, SQLITE3_TEXT);
