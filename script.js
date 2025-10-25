@@ -627,18 +627,32 @@ function focusItem(id, options = {}) {
 }
 
 // Focus previous item
+
 function focusPreviousItem(currentId, options = {}) {
-  const currentIndex = items.findIndex(i => i.id === currentId);
-  if (currentIndex > 0) {
-    focusItem(items[currentIndex - 1].id, options);
+  let currentIndex = items.findIndex(i => i.id === currentId);
+  let prevIndex = currentIndex - 1;
+  while (prevIndex >= 0) {
+    const prev = items[prevIndex];
+    if (!(prev.type === 'checkbox' && prev.checked)) {
+      focusItem(prev.id, options);
+      return;
+    }
+    prevIndex--;
   }
 }
 
 // Focus next item
+
 function focusNextItem(currentId, options = {}) {
-  const currentIndex = items.findIndex(i => i.id === currentId);
-  if (currentIndex < items.length - 1) {
-    focusItem(items[currentIndex + 1].id, options);
+  let currentIndex = items.findIndex(i => i.id === currentId);
+  let nextIndex = currentIndex + 1;
+  while (nextIndex < items.length) {
+    const next = items[nextIndex];
+    if (!(next.type === 'checkbox' && next.checked)) {
+      focusItem(next.id, options);
+      return;
+    }
+    nextIndex++;
   }
 }
 
