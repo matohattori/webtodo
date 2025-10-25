@@ -269,10 +269,6 @@ function renderItem(item) {
     checkbox.addEventListener('change', (e) => {
       updateItem(item.id, { checked: e.target.checked });
       li.classList.toggle('completed', e.target.checked);
-      const content = li.querySelector('.task-content');
-      if (content) {
-        content.contentEditable = e.target.checked ? 'false' : 'true';
-      }
     });
     li.appendChild(checkbox);
   }
@@ -289,11 +285,10 @@ function renderItem(item) {
   // Content (contenteditable)
   const content = document.createElement('div');
   content.className = 'task-content';
-  content.contentEditable = (item.type === 'checkbox' && item.checked) ? 'false' : 'true';
+  content.contentEditable = 'true';
   content.setAttribute('role', 'textbox');
   content.setAttribute('aria-label', getAriaLabel(item.type));
   content.textContent = item.text;
-  
   if (!item.text) {
     content.setAttribute('data-placeholder', getPlaceholder());
   } else {
