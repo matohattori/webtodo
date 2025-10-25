@@ -22,7 +22,9 @@ while ($row = $result->fetchArray(SQLITE3_ASSOC)) {
 }
 
 if (!in_array('type', $columns)) {
-  $db->exec('ALTER TABLE todos ADD COLUMN type TEXT NOT NULL DEFAULT "task"');
+  $db->exec('ALTER TABLE todos ADD COLUMN type TEXT NOT NULL DEFAULT "text"');
+  // Migrate old 'task' type to 'checkbox' for backward compatibility
+  $db->exec('UPDATE todos SET type = "checkbox" WHERE type = "task"');
 }
 if (!in_array('sort_order', $columns)) {
   $db->exec('ALTER TABLE todos ADD COLUMN sort_order INTEGER NOT NULL DEFAULT 0');
