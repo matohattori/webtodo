@@ -6,6 +6,61 @@ let undoStack = [];
 
 const list = document.getElementById('todoList');
 
+function addItemFromServer(data) {
+  if (!data || typeof data.id === 'undefined') return;
+  
+  const newOrder = typeof data.sort_order === 'number' ? data.sort_order : getNextOrderValue();
+  
+  items = items.map(item => {
+    if (typeof item.order === 'number' && item.order >= newOrder) {
+      return {...item, order: item.order + 1};
+    }
+    return item;
+  });
+  
+  const newItem = {
+    id: data.id,
+    type: data.type || 'text',
+    text: data.text || '',
+    checked: Number(data.done) === 1,
+    order: newOrder
+  };
+  
+  items.push(newItem);
+  items.sort((a, b) => a.order - b.order);
+  render();
+}
+
+function getNextOrderValue() {
+  if (items.length === 0) return 0;
+  return Math.max(...items.map(i => i.order || 0)) + 1;
+}
+
+function getCaretOffset(content) {
+  const selection = window.getSelection();
+  if (!selection || selection.rangeCount === 0) {
+    return content.textContent.length;
+  }
+  const range = selection.getRangeAt(0);
+  if (!content.contains(range.startContainer)) {
+    return content.textContent.length;
+  }
+  const preRange = range.cloneRange();
+  preRange.selectNodeContents(content);
+  preRange.setEnd(range.startContainer, range.startOffset);
+  return preRange.toString().length;
+}
+
+function splitTextAtCaret(content) {
+  const fullText = content.textContent || '';
+  const caretOffset = getCaretOffset(content);
+  return {
+    before: fullText.slice(0, caretOffset),
+    after: fullText.slice(caretOffset),
+    atEnd: caretOffset >= fullText.length
+  };
+}
+
 // Load from SQLite3 via API
 function loadItems(callback) {
   fetch('api.php?action=list', {cache: 'no-store'})
@@ -32,23 +87,40 @@ function loadItems(callback) {
 // No general saveItems() - each operation calls its specific endpoint
 
 // Create new item via API
-function createItem(type = 'text', text = '', afterId = null, callback) {
+function createItem(type = 'text', text = '', afterId = null, callback, options = {}) {
   text = text.trim();
   // Allow empty text for hr, checkbox, and list types
-  if (!text && !['hr', 'checkbox', 'list'].includes(type)) {
+  if (!text && !options.allowEmpty && !['hr', 'checkbox', 'list'].includes(type)) {
     if (callback) callback();
     return;
   }
   
   const params = new URLSearchParams({text, type});
   if (afterId) params.append('after_id', afterId);
-  
+  if (options.allowEmpty) params.append('allow_empty', '1');
+
   fetch('api.php?action=add', {
     method: 'POST',
     headers: {'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8'},
     body: params
   })
-  .then(() => loadItems(callback))
+  .then(response => {
+    const contentType = response.headers.get('Content-Type') || '';
+    if (contentType.includes('application/json')) {
+      return response.json();
+    }
+    return null;
+  })
+  .then(data => {
+    if (options.skipReload && data) {
+      addItemFromServer(data);
+      if (typeof callback === 'function') callback(data);
+      return;
+    }
+    loadItems(() => {
+      if (typeof callback === 'function') callback(data);
+    });
+  })
   .catch(err => console.error('Failed to create item:', err));
 }
 
@@ -128,8 +200,8 @@ function undoDelete() {
 }
 
 // Insert item at position via API
-function insertItemAfter(afterId, type = 'text', callback) {
-  createItem(type, '', afterId, callback);
+function insertItemAfter(afterId, type = 'text', text = '', callback, options = {}) {
+  createItem(type, text, afterId, callback, options);
 }
 
 // Reorder items based on DOM order via API
@@ -160,8 +232,10 @@ function render() {
     renderItem(item);
   });
   
-  // Add final empty row for new input
-  addEmptyRow();
+  // If no items exist, show single input row
+  if (items.length === 0) {
+    addEmptyRow();
+  }
 }
 
 // Render single item
@@ -221,7 +295,9 @@ function renderItem(item) {
   content.textContent = item.text;
   
   if (!item.text) {
-    content.setAttribute('data-placeholder', getPlaceholder(item.type));
+    content.setAttribute('data-placeholder', getPlaceholder());
+  } else {
+    content.removeAttribute('data-placeholder');
   }
   
   // Setup content event handlers
@@ -248,13 +324,8 @@ function getAriaLabel(type) {
 }
 
 // Get placeholder based on type
-function getPlaceholder(type) {
-  switch(type) {
-    case 'heading': return '見出しを入力...';
-    case 'checkbox': return 'タスクを入力...';
-    case 'list': return 'リスト項目を入力...';
-    default: return 'テキストを入力...';
-  }
+function getPlaceholder() {
+  return '[/h]Header, [/c]Check, [/-]List, [/_]Line';
 }
 
 // Setup content event handlers
@@ -271,7 +342,11 @@ function setupContentHandlers(content, item, li) {
   
   content.addEventListener('input', () => {
     const text = content.textContent;
-    content.setAttribute('data-placeholder', text ? '' : getPlaceholder(item.type));
+    if (text) {
+      content.removeAttribute('data-placeholder');
+    } else {
+      content.setAttribute('data-placeholder', getPlaceholder());
+    }
     
     // Check for slash commands
     if (text.startsWith('/')) {
@@ -293,28 +368,35 @@ function setupContentHandlers(content, item, li) {
 
 // Handle slash commands
 function handleSlashCommand(text, item, li, content) {
-  if (text === '/c') {
-    // Convert to checkbox
+  const trimmed = text.trim();
+  const commands = ['/c', '/c/', '/h', '/h/', '/-', '/-/', '/_', '/_/'];
+  if (!commands.includes(trimmed)) return;
+
+  const clearSlash = () => {
     content.textContent = '';
+    item.text = '';
+  };
+  
+  if (trimmed.startsWith('/c')) {
+    // Convert to checkbox
+    clearSlash();
     updateItem(item.id, { type: 'checkbox', text: '' }, () => {
       setTimeout(() => focusItem(item.id), 100);
     });
-  } else if (text === '/h') {
-    // Convert to heading and add hr below
-    content.textContent = '';
+  } else if (trimmed.startsWith('/h')) {
+    // Convert to heading without inserting hr
+    clearSlash();
     updateItem(item.id, { type: 'heading', text: '' }, () => {
-      // Create hr after this item
-      createItem('hr', '', item.id, () => {
-        setTimeout(() => focusItem(item.id), 100);
-      });
+      setTimeout(() => focusItem(item.id), 100);
     });
-  } else if (text === '/-') {
+  } else if (trimmed.startsWith('/-')) {
     // Convert to list
-    content.textContent = '';
+    clearSlash();
     updateItem(item.id, { type: 'list', text: '' }, () => {
       setTimeout(() => focusItem(item.id), 100);
     });
-  } else if (text === '/_') {
+  } else if (trimmed.startsWith('/_')) {
+    clearSlash();
     // Convert to horizontal rule
     updateItem(item.id, { type: 'hr', text: '' }, () => {
       // Focus next item
@@ -330,7 +412,7 @@ function handleSlashCommand(text, item, li, content) {
 function handleKeyDown(e, content, item, li) {
   if (e.key === 'Enter' && !e.shiftKey) {
     e.preventDefault();
-    handleEnter(item, li);
+    handleEnter(item, li, content);
   } else if (e.key === 'Enter' && e.shiftKey) {
     // Shift+Enter: insert line break within same block
     // This is handled by default contenteditable behavior
@@ -340,63 +422,122 @@ function handleKeyDown(e, content, item, li) {
     e.preventDefault();
     content.blur();
     render();
+  } else if (e.key === 'ArrowLeft') {
+    const caret = getCaretOffset(content);
+    if (caret === 0) {
+      e.preventDefault();
+      focusPreviousItem(item.id, { position: 'end' });
+    }
+  } else if (e.key === 'ArrowRight') {
+    const caret = getCaretOffset(content);
+    if (caret === content.textContent.length) {
+      e.preventDefault();
+      focusNextItem(item.id, { position: 'start' });
+    }
   } else if (e.key === 'ArrowUp') {
     e.preventDefault();
     focusPreviousItem(item.id);
   } else if (e.key === 'ArrowDown') {
     e.preventDefault();
     focusNextItem(item.id);
-  } else if ((e.key === 'Backspace' || e.key === 'Delete') && content.textContent === '') {
+  } else if (e.key === 'Backspace' && getCaretOffset(content) === 0) {
     e.preventDefault();
-    handleEmptyLineBackspace(item);
+    handleEmptyLineBackspace(item, content);
   } else if (e.key === 'z' && (e.ctrlKey || e.metaKey)) {
     e.preventDefault();
     undoDelete();
   }
 }
 
-// Handle Backspace/Delete on empty line
-function handleEmptyLineBackspace(item) {
-  if (item.type === 'list' || item.type === 'checkbox') {
-    // Convert to text
-    updateItem(item.id, { type: 'text' }, () => {
-      setTimeout(() => focusItem(item.id), 100);
+// Handle Backspace/Delete on empty line or at start
+function handleEmptyLineBackspace(item, content) {
+  if (['heading', 'list', 'checkbox'].includes(item.type)) {
+    const newType = 'text';
+    updateItem(item.id, { type: newType }, () => {
+      setTimeout(() => focusItem(item.id, { position: 'start' }), 50);
     });
-  } else if (item.type === 'text') {
-    // Delete the line
-    deleteItem(item.id);
+    return;
   }
-  // For heading and hr, do nothing (or could delete them too)
+  
+  if (item.type === 'text') {
+    mergeWithPreviousLine(item, content);
+  }
+}
+
+function mergeWithPreviousLine(item, content) {
+  const index = items.findIndex(i => i.id === item.id);
+  if (index <= 0) return;
+  const prevItem = items[index - 1];
+  if (!prevItem) return;
+  
+  const prevContent = list.querySelector(`li[data-id="${prevItem.id}"] .task-content`);
+  const prevText = prevContent ? prevContent.textContent : (prevItem.text || '');
+  const currentText = content ? content.textContent : (item.text || '');
+  const combinedText = prevText + currentText;
+  
+  if (prevContent) {
+    prevContent.textContent = combinedText;
+  }
+  
+  updateItem(prevItem.id, { text: combinedText }, () => {
+    deleteItem(item.id);
+    setTimeout(() => focusItem(prevItem.id, { position: 'end' }), 120);
+  });
+}
+
+function resolveNextType(item) {
+  if (item.type === 'checkbox') return 'checkbox';
+  if (item.type === 'list') return 'list';
+  return 'text';
 }
 
 // Handle Enter key
-function handleEnter(item, li) {
-  const content = li.querySelector('.task-content');
-  if (content) {
-    const text = content.textContent.trim();
-    if (text !== item.text) {
-      updateItem(item.id, { text: text });
+function handleEnter(item, li, content) {
+  if (!content) return;
+  const { before, after, atEnd } = splitTextAtCaret(content);
+  const trimmedCurrent = before.trim();
+  const trailingText = after.trim();
+  
+  if (!atEnd) {
+    const currentText = trimmedCurrent;
+    content.textContent = currentText;
+    if (currentText) {
+      content.removeAttribute('data-placeholder');
+    } else {
+      content.setAttribute('data-placeholder', getPlaceholder());
     }
+    if (currentText !== item.text) {
+      updateItem(item.id, { text: currentText });
+    }
+    
+    const nextType = (item.type === 'heading') ? 'text' : resolveNextType(item);
+    
+    insertItemAfter(item.id, nextType, trailingText, (data) => {
+      const newId = data && data.id;
+      if (newId) {
+        setTimeout(() => focusItem(newId, { position: 'start' }), 150);
+      }
+    }, { allowEmpty: true, skipReload: true });
+    return;
   }
   
-  // Determine the type for the next line based on current type
-  let nextType = 'text';
-  if (item.type === 'checkbox') {
-    nextType = 'checkbox';
-  } else if (item.type === 'list') {
-    nextType = 'list';
+  const text = content.textContent.trim();
+  if (text !== item.text) {
+    updateItem(item.id, { text: text });
   }
-  // For heading and text, next line is text
-  // For hr, this shouldn't be called as hr is not editable
   
-  // Create new item below
-  insertItemAfter(item.id, nextType, () => {
-    // Focus on newly created item
+  const nextType = resolveNextType(item);
+  
+  insertItemAfter(item.id, nextType, '', (data) => {
+    if (data && data.id) {
+      setTimeout(() => focusItem(data.id, { position: 'start' }), 150);
+      return;
+    }
     const currentIndex = items.findIndex(i => i.id === item.id);
     if (currentIndex !== -1 && currentIndex < items.length - 1) {
-      setTimeout(() => focusItem(items[currentIndex + 1].id), 100);
+      setTimeout(() => focusItem(items[currentIndex + 1].id, { position: 'start' }), 100);
     }
-  });
+  }, { allowEmpty: true });
 }
 
 // Handle content blur
@@ -430,7 +571,7 @@ function addEmptyRow() {
   const content = document.createElement('div');
   content.className = 'task-content';
   content.contentEditable = 'true';
-  content.setAttribute('data-placeholder', 'テキストを入力...');
+  content.setAttribute('data-placeholder', getPlaceholder());
   content.setAttribute('role', 'textbox');
   content.setAttribute('aria-label', '新しい行');
   
@@ -438,12 +579,11 @@ function addEmptyRow() {
     const text = content.textContent.trim();
     if (text) {
       // Create new item
-      createItem('text', text, null, () => {
-        // Focus on newly created item (last one)
-        if (items.length > 0) {
-          setTimeout(() => focusItem(items[items.length - 1].id), 100);
+      createItem('text', text, null, (data) => {
+        if (data && data.id) {
+          setTimeout(() => focusItem(data.id), 100);
         }
-      });
+      }, { skipReload: true });
     }
   });
   
@@ -452,12 +592,11 @@ function addEmptyRow() {
       e.preventDefault();
       const text = content.textContent.trim();
       if (text) {
-        createItem('text', text, null, () => {
-          // Focus on newly created item (last one)
-          if (items.length > 0) {
-            setTimeout(() => focusItem(items[items.length - 1].id), 100);
+        createItem('text', text, null, (data) => {
+          if (data && data.id) {
+            setTimeout(() => focusItem(data.id), 100);
           }
-        });
+        }, { skipReload: true });
       }
     }
   });
@@ -467,17 +606,19 @@ function addEmptyRow() {
 }
 
 // Focus item by id
-function focusItem(id) {
+function focusItem(id, options = {}) {
+  const position = options.position || 'end';
   setTimeout(() => {
     const li = list.querySelector(`li[data-id="${id}"]`);
     if (li) {
       const content = li.querySelector('.task-content');
       if (content) {
         content.focus();
-        // Place cursor at end
         const range = document.createRange();
         const sel = window.getSelection();
-        if (content.childNodes.length > 0) {
+        if (position === 'start') {
+          range.setStart(content, 0);
+        } else if (content.childNodes.length > 0) {
           range.setStart(content.childNodes[0], content.textContent.length);
         } else {
           range.setStart(content, 0);
@@ -491,18 +632,18 @@ function focusItem(id) {
 }
 
 // Focus previous item
-function focusPreviousItem(currentId) {
+function focusPreviousItem(currentId, options = {}) {
   const currentIndex = items.findIndex(i => i.id === currentId);
   if (currentIndex > 0) {
-    focusItem(items[currentIndex - 1].id);
+    focusItem(items[currentIndex - 1].id, options);
   }
 }
 
 // Focus next item
-function focusNextItem(currentId) {
+function focusNextItem(currentId, options = {}) {
   const currentIndex = items.findIndex(i => i.id === currentId);
   if (currentIndex < items.length - 1) {
-    focusItem(items[currentIndex + 1].id);
+    focusItem(items[currentIndex + 1].id, options);
   }
 }
 

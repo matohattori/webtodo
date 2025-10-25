@@ -50,9 +50,10 @@ switch ($action) {
     $text = trim((string)($_POST['text'] ?? ''));
     $type = (string)($_POST['type'] ?? 'text');
     $after_id = isset($_POST['after_id']) ? (int)$_POST['after_id'] : null;
+    $allow_empty = isset($_POST['allow_empty']) && $_POST['allow_empty'] === '1';
     
     // Allow empty text for hr, checkbox, and list types
-    if ($text !== '' || in_array($type, ['hr', 'checkbox', 'list'])) {
+    if ($text !== '' || $allow_empty || in_array($type, ['hr', 'checkbox', 'list'])) {
       if ($after_id) {
         // Insert after specific item - get its sort_order and increment all following items
         $afterOrder = $db->querySingle("SELECT sort_order FROM todos WHERE id = {$after_id}");
@@ -74,6 +75,16 @@ switch ($action) {
       $stmt->bindValue(':type', $type, SQLITE3_TEXT);
       $stmt->bindValue(':sort_order', $newOrder, SQLITE3_INTEGER);
       $stmt->execute();
+
+      $newId = $db->lastInsertRowID();
+      header('Content-Type: application/json; charset=utf-8');
+      echo json_encode([
+        'id' => $newId,
+        'text' => $text,
+        'type' => $type,
+        'done' => 0,
+        'sort_order' => $newOrder
+      ], JSON_UNESCAPED_UNICODE);
     }
     break;
 
@@ -88,33 +99,33 @@ switch ($action) {
 
   case 'edit':
     $id = (int)($_POST['id'] ?? 0);
-    $text = trim((string)($_POST['text'] ?? ''));
-    $type = (string)($_POST['type'] ?? '');
+    $textProvided = array_key_exists('text', $_POST);
+    $text = $textProvided ? trim((string)$_POST['text']) : '';
+    $typeProvided = array_key_exists('type', $_POST);
+    $type = $typeProvided ? (string)$_POST['type'] : '';
     
     if ($id) {
       // Build dynamic SQL based on what fields are being updated
       $updates = [];
       $params = [];
       
-      if ($text !== '' || $type !== '') {
-        if ($text !== '') {
-          $updates[] = 'text = :text';
-          $params[':text'] = [$text, SQLITE3_TEXT];
+      if ($textProvided) {
+        $updates[] = 'text = :text';
+        $params[':text'] = [$text, SQLITE3_TEXT];
+      }
+      if ($typeProvided && $type !== '') {
+        $updates[] = 'type = :type';
+        $params[':type'] = [$type, SQLITE3_TEXT];
+      }
+      
+      if (count($updates) > 0) {
+        $sql = 'UPDATE todos SET ' . implode(', ', $updates) . ' WHERE id = :id';
+        $stmt = $db->prepare($sql);
+        foreach ($params as $key => $value) {
+          $stmt->bindValue($key, $value[0], $value[1]);
         }
-        if ($type !== '') {
-          $updates[] = 'type = :type';
-          $params[':type'] = [$type, SQLITE3_TEXT];
-        }
-        
-        if (count($updates) > 0) {
-          $sql = 'UPDATE todos SET ' . implode(', ', $updates) . ' WHERE id = :id';
-          $stmt = $db->prepare($sql);
-          foreach ($params as $key => $value) {
-            $stmt->bindValue($key, $value[0], $value[1]);
-          }
-          $stmt->bindValue(':id', $id, SQLITE3_INTEGER);
-          $stmt->execute();
-        }
+        $stmt->bindValue(':id', $id, SQLITE3_INTEGER);
+        $stmt->execute();
       }
     }
     break;
