@@ -12,7 +12,7 @@
 }
 
 body {
-  background: #FAFAFA;
+  background: #E3F2FD;
   font-family: 'Noto Sans JP', system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
   display: flex;
   justify-content: center;
@@ -25,9 +25,9 @@ body {
   width: 100%;
   max-width: 800px;
   padding: 16px;
-  background: #FFFFFF;
+  background: #EAF4FF;
   border-radius: 8px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+  box-shadow: none;
 }
 
 ul {
@@ -41,16 +41,15 @@ li {
   position: relative;
   display: flex;
   align-items: center;
-  padding: 4px 8px;
-  border-bottom: 0.5px solid #EFEFEF;
+  padding: 0 4px;
   transition: background-color 0.15s ease;
-  min-height: 30px;
-  line-height: 1.4;
-  gap: 6px;
+  min-height: 18px;
+  line-height: 1.25;
+  gap: 2px;
 }
 
 li:hover {
-  background: #F8F8F8;
+  background: rgba(255, 255, 255, 0.4);
 }
 
 li:hover .delete {
@@ -67,11 +66,23 @@ li.completed .task-content {
   text-decoration: line-through;
 }
 
-/* Heading styling - larger, bold */
+/* Heading styling - larger, bold with underline */
+li[data-type="heading"] {
+  padding-bottom: 2px;
+  margin-bottom: 2px;
+}
+
 li[data-type="heading"] .task-content {
-  font-size: 15px;
+  font-size: 13px;
   font-weight: 600;
-  color: #222;
+  color: #1E3A5F;
+  border-bottom: 1px solid rgba(30, 58, 95, 0.35);
+  padding-bottom: 3px;
+  margin-bottom: 0;
+  margin-left: -6px;
+  padding-left: 6px;
+  display: block;
+  width: 100%;
 }
 
 /* Horizontal rule styling - thin line */
@@ -81,7 +92,7 @@ li.hr {
   height: 1px;
   border: none;
   border-top: 1px solid #D5D5D5;
-  margin: 12px 0;
+  margin: 4px 0;
   background: transparent;
   position: relative;
   gap: 0;
@@ -90,14 +101,14 @@ li.hr {
 
 li.hr:hover {
   background: transparent;
-  border-top-color: #BBB;
+  border-top-color: #99C4F5;
 }
 
 li.hr .delete {
   position: absolute;
   right: 0;
   top: -12px;
-  background: white;
+  background: #EAF4FF;
   padding: 2px 6px;
 }
 
@@ -153,6 +164,22 @@ input[type="checkbox"] {
   content: attr(data-placeholder);
   color: #BBB;
   font-style: italic;
+  opacity: 0;
+  font-size: clamp(9px, 2.5vw, 11px);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: block;
+  width: 100%;
+  transition: opacity 0.15s ease;
+}
+
+.task-content:focus:empty:before {
+  opacity: 1;
+}
+
+.task-content[data-placeholder]:not(:focus):before {
+  opacity: 0;
 }
 
 /* Delete button - right side */
@@ -181,7 +208,6 @@ button.delete:hover {
 }
 
 .empty-row .task-content:empty:before {
-  content: attr(data-placeholder);
   color: #CCC;
 }
 
@@ -198,8 +224,9 @@ button.delete:hover {
   }
   
   li {
-    padding: 4px 6px;
-    min-height: 28px;
+    padding: 0 3px;
+    min-height: 20px;
+    gap: 2px;
   }
   
   .delete {
