@@ -1,6 +1,6 @@
-// Data structure: { id, type, text, checked, order }
-// type: 'text' | 'checkbox' | 'list' | 'hr' | 'heading'
-// No parentId - flat structure only
+// Data structure: { id, type, text, checked, parentId, order }
+// type: 'task' | 'heading' | 'divider'
+// parentId: ID of parent task (for subtasks)
 
 let items = [];
 let undoStack = [];
@@ -12,20 +12,14 @@ function loadItems(callback) {
   fetch('api.php?action=list', {cache: 'no-store'})
     .then(r => r.json())
     .then(data => {
-      items = data.map(row => {
-        // Migrate old types to new types
-        let type = row.type || 'text';
-        if (type === 'task') type = 'checkbox';
-        if (type === 'divider') type = 'hr';
-        
-        return {
-          id: row.id,
-          type: type,
-          text: row.text || '',
-          checked: Number(row.done) === 1,
-          order: row.sort_order || 0
-        };
-      });
+      items = data.map(row => ({
+        id: row.id,
+        type: row.type || 'task',
+        text: row.text || '',
+        checked: Number(row.done) === 1,
+        parentId: row.parent_id ? Number(row.parent_id) : null,
+        order: row.sort_order || 0
+      }));
       render();
       if (typeof callback === 'function') callback();
     })
@@ -40,9 +34,15 @@ function loadItems(callback) {
 // No general saveItems() - each operation calls its specific endpoint
 
 // Create new item via API
-function createItem(type = 'text', text = '', afterId = null, callback) {
-  // Allow empty text for all types (will be filled in by user)
-  const params = new URLSearchParams({text: text || '', type});
+function createItem(type = 'task', text = '', parentId = null, afterId = null, callback) {
+  text = text.trim();
+  if (!text && type !== 'divider') {
+    if (callback) callback();
+    return;
+  }
+  
+  const params = new URLSearchParams({text, type});
+  if (parentId) params.append('parent_id', parentId);
   if (afterId) params.append('after_id', afterId);
   
   fetch('api.php?action=add', {
@@ -76,7 +76,7 @@ function updateItem(id, updates, callback) {
     return;
   }
   
-  // Handle text, type updates via edit endpoint
+  // Handle text, type, or parentId updates via edit endpoint
   const params = new URLSearchParams({id: id.toString()});
   
   if (updates.text !== undefined) {
@@ -87,6 +87,10 @@ function updateItem(id, updates, callback) {
   
   if (updates.type !== undefined) {
     params.append('type', updates.type);
+  }
+  
+  if (updates.parentId !== undefined) {
+    params.append('parent_id', updates.parentId === null ? '' : updates.parentId.toString());
   }
   
   fetch('api.php?action=edit', {
@@ -124,14 +128,30 @@ function undoDelete() {
     const lastAction = undoStack.pop();
     if (lastAction.action === 'delete') {
       // Re-add the item via API
-      createItem(lastAction.item.type, lastAction.item.text);
+      createItem(lastAction.item.type, lastAction.item.text, lastAction.item.parentId);
     }
   }
 }
 
 // Insert item at position via API
-function insertItemAfter(afterId, type = 'text', callback) {
-  createItem(type, '', afterId, callback);
+function insertItemAfter(afterId, type = 'task', parentId = null, callback) {
+  createItem(type, '', parentId, afterId, callback);
+}
+
+// Reorder items based on DOM order via API
+function reorderItems(callback) {
+  const lis = Array.from(list.querySelectorAll('li[data-id]'));
+  const order = lis.map(li => li.dataset.id);
+  
+  const params = new URLSearchParams({order: JSON.stringify(order)});
+  
+  fetch('api.php?action=reorder', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8'},
+    body: params
+  })
+  .then(() => loadItems(callback))
+  .catch(err => console.error('Failed to reorder items:', err));
 }
 
 // Render all items
@@ -141,38 +161,62 @@ function render() {
   // Sort items by order
   items.sort((a, b) => a.order - b.order);
   
-  // Render all items (flat structure)
+  // Render parent items
   items.forEach(item => {
-    renderItem(item);
+    if (!item.parentId) {
+      renderItem(item);
+    }
   });
   
   // Add final empty row for new input
   addEmptyRow();
+  
+  // Setup SortableJS
+  setupSortable();
 }
 
 // Render single item
-function renderItem(item) {
+function renderItem(item, parentLi = null) {
   const li = document.createElement('li');
   li.dataset.id = item.id;
   li.dataset.type = item.type;
   li.setAttribute('tabindex', '0');
   li.setAttribute('role', 'listitem');
   
-  if (item.checked && item.type === 'checkbox') {
+  if (item.checked) {
     li.classList.add('completed');
   }
   
-  // Horizontal rule is special - non-editable line
-  if (item.type === 'hr') {
-    li.classList.add('hr');
+  if (item.parentId) {
+    li.classList.add('subtask');
+  }
+  
+  // Divider is special
+  if (item.type === 'divider') {
+    li.classList.add('divider');
+    const dragHandle = document.createElement('span');
+    dragHandle.className = 'drag-handle';
+    dragHandle.textContent = '≡';
+    dragHandle.setAttribute('aria-label', 'ドラッグハンドル');
+    li.appendChild(dragHandle);
+    
     const deleteBtn = createDeleteButton(item.id);
     li.appendChild(deleteBtn);
+    
     list.appendChild(li);
+    addInsertBar(li);
     return;
   }
   
-  // Checkbox for checkbox type
-  if (item.type === 'checkbox') {
+  // Drag handle
+  const dragHandle = document.createElement('span');
+  dragHandle.className = 'drag-handle';
+  dragHandle.textContent = '≡';
+  dragHandle.setAttribute('aria-label', 'ドラッグハンドル');
+  li.appendChild(dragHandle);
+  
+  // Checkbox for tasks
+  if (item.type === 'task') {
     const checkbox = document.createElement('input');
     checkbox.type = 'checkbox';
     checkbox.checked = item.checked;
@@ -188,31 +232,16 @@ function renderItem(item) {
     li.appendChild(checkbox);
   }
   
-  // Bullet point for list type
-  if (item.type === 'list') {
-    const bullet = document.createElement('span');
-    bullet.className = 'bullet';
-    bullet.textContent = '•';
-    bullet.setAttribute('aria-hidden', 'true');
-    li.appendChild(bullet);
-  }
-  
   // Content (contenteditable)
   const content = document.createElement('div');
   content.className = 'task-content';
-  content.contentEditable = (item.checked && item.type === 'checkbox') ? 'false' : 'true';
+  content.contentEditable = item.checked ? 'false' : 'true';
   content.setAttribute('role', 'textbox');
-  
-  let placeholder = 'テキストを入力...';
-  if (item.type === 'heading') placeholder = '見出しを入力...';
-  else if (item.type === 'checkbox') placeholder = 'タスクを入力...';
-  else if (item.type === 'list') placeholder = '項目を入力...';
-  
-  content.setAttribute('aria-label', placeholder);
+  content.setAttribute('aria-label', item.type === 'heading' ? '見出し' : 'タスク内容');
   content.textContent = item.text;
   
   if (!item.text) {
-    content.setAttribute('data-placeholder', placeholder);
+    content.setAttribute('data-placeholder', item.type === 'heading' ? '見出しを入力...' : 'タスクを入力...');
   }
   
   // Setup content event handlers
@@ -220,12 +249,51 @@ function renderItem(item) {
   
   li.appendChild(content);
   
+  // Add subtask button (only for parent tasks)
+  if (item.type === 'task' && !item.parentId) {
+    const addSubtaskBtn = document.createElement('button');
+    addSubtaskBtn.className = 'add-subtask';
+    addSubtaskBtn.textContent = '+';
+    addSubtaskBtn.title = 'サブタスクを追加';
+    addSubtaskBtn.setAttribute('aria-label', 'サブタスクを追加');
+    addSubtaskBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      insertItemAfter(item.id, 'task', item.id, () => {
+        // After item is created and loaded, focus on it
+        // Find the newly created item (last subtask of this parent)
+        const children = items.filter(i => i.parentId === item.id);
+        if (children.length > 0) {
+          const lastChild = children[children.length - 1];
+          setTimeout(() => focusItem(lastChild.id), 100);
+        }
+      });
+    });
+    li.appendChild(addSubtaskBtn);
+  }
+  
   // Delete button
   const deleteBtn = createDeleteButton(item.id);
   li.appendChild(deleteBtn);
   
   // Append to DOM
-  list.appendChild(li);
+  if (parentLi) {
+    let sublist = parentLi.querySelector('ul.subtask-list');
+    if (!sublist) {
+      sublist = document.createElement('ul');
+      sublist.className = 'subtask-list';
+      parentLi.appendChild(sublist);
+    }
+    sublist.appendChild(li);
+  } else {
+    list.appendChild(li);
+  }
+  
+  // Add insert bar after this item
+  addInsertBar(li);
+  
+  // Render children
+  const children = items.filter(i => i.parentId === item.id);
+  children.forEach(child => renderItem(child, li));
 }
 
 // Setup content event handlers
@@ -264,34 +332,24 @@ function setupContentHandlers(content, item, li) {
 
 // Handle slash commands
 function handleSlashCommand(text, item, li, content) {
-  if (text === '/c') {
-    // Convert to checkbox
+  if (text === '/t') {
+    // Convert to task
     content.textContent = '';
-    updateItem(item.id, { type: 'checkbox', text: '' }, () => {
+    updateItem(item.id, { type: 'task', text: '' }, () => {
       setTimeout(() => focusItem(item.id), 100);
     });
   } else if (text === '/h') {
-    // Convert to heading and insert hr below
+    // Convert to heading
     content.textContent = '';
     updateItem(item.id, { type: 'heading', text: '' }, () => {
       li.dataset.type = 'heading';
       content.setAttribute('data-placeholder', '見出しを入力...');
-      // Insert hr after this heading
-      createItem('hr', '', item.id, () => {
-        setTimeout(() => focusItem(item.id), 100);
-      });
     });
-  } else if (text === '/-') {
-    // Convert to list (bullet point)
-    content.textContent = '';
-    updateItem(item.id, { type: 'list', text: '' }, () => {
-      setTimeout(() => focusItem(item.id), 100);
-    });
-  } else if (text === '/_') {
-    // Convert to horizontal rule
-    updateItem(item.id, { type: 'hr', text: '' }, () => {
+  } else if (text === '/-' || text === '/- ') {
+    // Create divider
+    updateItem(item.id, { type: 'divider', text: '' }, () => {
       // Focus next item
-      const nextItem = items.find(i => i.order > item.order);
+      const nextItem = items.find(i => i.order > item.order && !i.parentId);
       if (nextItem) {
         setTimeout(() => focusItem(nextItem.id), 100);
       }
@@ -308,6 +366,13 @@ function handleKeyDown(e, content, item, li) {
     e.preventDefault();
     content.blur();
     render();
+  } else if (e.key === 'Tab') {
+    e.preventDefault();
+    if (e.shiftKey) {
+      handleUnindent(item);
+    } else {
+      handleIndent(item);
+    }
   } else if (e.key === 'ArrowUp') {
     e.preventDefault();
     focusPreviousItem(item.id);
@@ -316,27 +381,14 @@ function handleKeyDown(e, content, item, li) {
     focusNextItem(item.id);
   } else if ((e.key === 'Backspace' || e.key === 'Delete') && content.textContent === '') {
     e.preventDefault();
-    handleEmptyLineBackspace(item);
+    deleteItem(item.id);
   } else if (e.key === 'z' && (e.ctrlKey || e.metaKey)) {
     e.preventDefault();
     undoDelete();
   }
 }
 
-// Handle Backspace/Delete on empty line
-function handleEmptyLineBackspace(item) {
-  if (item.type === 'list' || item.type === 'checkbox') {
-    // Convert back to text
-    updateItem(item.id, { type: 'text', text: '' }, () => {
-      setTimeout(() => focusItem(item.id), 100);
-    });
-  } else if (item.type === 'text') {
-    // Delete the line
-    deleteItem(item.id);
-  }
-}
-
-// Handle Enter key - auto-continue format for checkbox and list
+// Handle Enter key
 function handleEnter(item, li) {
   const content = li.querySelector('.task-content');
   if (content) {
@@ -346,21 +398,41 @@ function handleEnter(item, li) {
     }
   }
   
-  // Determine type for new line based on current type
-  let newType = 'text';
-  if (item.type === 'checkbox') {
-    newType = 'checkbox'; // Continue checkbox format
-  } else if (item.type === 'list') {
-    newType = 'list'; // Continue list format
-  }
-  
-  // Create new item below with appropriate type
-  insertItemAfter(item.id, newType, () => {
+  // Create new item below
+  insertItemAfter(item.id, 'task', item.parentId, () => {
     // Focus on newly created item
     const currentIndex = items.findIndex(i => i.id === item.id);
     if (currentIndex !== -1 && currentIndex < items.length - 1) {
       setTimeout(() => focusItem(items[currentIndex + 1].id), 100);
     }
+  });
+}
+
+// Handle Tab (indent to subtask)
+function handleIndent(item) {
+  if (item.parentId) return; // Already a subtask
+  
+  // Find previous sibling
+  const index = items.findIndex(i => i.id === item.id);
+  if (index > 0) {
+    for (let i = index - 1; i >= 0; i--) {
+      if (!items[i].parentId) {
+        // Found a parent item
+        updateItem(item.id, { parentId: items[i].id }, () => {
+          setTimeout(() => focusItem(item.id), 100);
+        });
+        return;
+      }
+    }
+  }
+}
+
+// Handle Shift+Tab (unindent)
+function handleUnindent(item) {
+  if (!item.parentId) return; // Not a subtask
+  
+  updateItem(item.id, { parentId: null }, () => {
+    setTimeout(() => focusItem(item.id), 100);
   });
 }
 
@@ -386,6 +458,34 @@ function createDeleteButton(id) {
   return deleteBtn;
 }
 
+// Add insert bar between items
+function addInsertBar(afterLi) {
+  const insertBar = document.createElement('div');
+  insertBar.className = 'insert-bar';
+  
+  const insertBtn = document.createElement('button');
+  insertBtn.className = 'insert-btn';
+  insertBtn.textContent = '+';
+  insertBtn.title = '新規タスクを挿入';
+  insertBtn.setAttribute('aria-label', '新規タスクを挿入');
+  
+  insertBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    const afterId = parseInt(afterLi.dataset.id);
+    const afterItem = items.find(i => i.id === afterId);
+    insertItemAfter(afterId, 'task', afterItem ? afterItem.parentId : null, () => {
+      // Focus on newly created item
+      const currentIndex = items.findIndex(i => i.id === afterId);
+      if (currentIndex !== -1 && currentIndex < items.length - 1) {
+        setTimeout(() => focusItem(items[currentIndex + 1].id), 100);
+      }
+    });
+  });
+  
+  insertBar.appendChild(insertBtn);
+  afterLi.insertAdjacentElement('afterend', insertBar);
+}
+
 // Add empty row at the end
 function addEmptyRow() {
   const li = document.createElement('li');
@@ -395,27 +495,34 @@ function addEmptyRow() {
   const content = document.createElement('div');
   content.className = 'task-content';
   content.contentEditable = 'true';
-  content.setAttribute('data-placeholder', 'テキストを入力...');
+  content.setAttribute('data-placeholder', 'タスクを入力...');
   content.setAttribute('role', 'textbox');
-  content.setAttribute('aria-label', '新しいテキスト');
+  content.setAttribute('aria-label', '新しいタスク');
+  
+  content.addEventListener('input', () => {
+    const text = content.textContent.trim();
+    if (text) {
+      // Create new item
+      createItem('task', text, null, null, () => {
+        // Focus on newly created item (last one)
+        if (items.length > 0) {
+          setTimeout(() => focusItem(items[items.length - 1].id), 100);
+        }
+      });
+    }
+  });
   
   content.addEventListener('keydown', (e) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       const text = content.textContent.trim();
       if (text) {
-        createItem('text', text, null, () => {
+        createItem('task', text, null, null, () => {
           // Focus on newly created item (last one)
           if (items.length > 0) {
             setTimeout(() => focusItem(items[items.length - 1].id), 100);
           }
         });
-      }
-    } else if (e.key === 'ArrowUp') {
-      e.preventDefault();
-      // Focus on last item
-      if (items.length > 0) {
-        focusItem(items[items.length - 1].id);
       }
     }
   });
@@ -462,6 +569,72 @@ function focusNextItem(currentId) {
   if (currentIndex < items.length - 1) {
     focusItem(items[currentIndex + 1].id);
   }
+}
+
+// Setup drag and drop (native implementation following SortableJS patterns)
+function setupSortable() {
+  let draggedElement = null;
+  
+  const draggableItems = list.querySelectorAll('li[data-id]');
+  
+  draggableItems.forEach(li => {
+    // Make item draggable via handle
+    const handle = li.querySelector('.drag-handle');
+    if (!handle) return;
+    
+    handle.addEventListener('mousedown', (e) => {
+      li.setAttribute('draggable', 'true');
+    });
+    
+    handle.addEventListener('mouseup', (e) => {
+      li.setAttribute('draggable', 'false');
+    });
+    
+    li.addEventListener('dragstart', (e) => {
+      draggedElement = li;
+      li.classList.add('dragging');
+      e.dataTransfer.effectAllowed = 'move';
+      e.dataTransfer.setData('text/html', li.innerHTML);
+    });
+    
+    li.addEventListener('dragend', (e) => {
+      li.classList.remove('dragging');
+      li.setAttribute('draggable', 'false');
+      draggedElement = null;
+      
+      // Reorder via API and re-render
+      setTimeout(() => {
+        reorderItems();
+      }, 50);
+    });
+    
+    li.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      if (!draggedElement || draggedElement === li) return;
+      
+      const bounding = li.getBoundingClientRect();
+      const offset = bounding.y + (bounding.height / 2);
+      
+      if (e.clientY - offset > 0) {
+        // Insert after
+        if (li.nextSibling && li.nextSibling !== draggedElement) {
+          li.parentNode.insertBefore(draggedElement, li.nextSibling);
+        } else if (!li.nextSibling) {
+          li.parentNode.appendChild(draggedElement);
+        }
+      } else {
+        // Insert before
+        if (li !== draggedElement) {
+          li.parentNode.insertBefore(draggedElement, li);
+        }
+      }
+    });
+    
+    li.addEventListener('drop', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+    });
+  });
 }
 
 // Initialize
