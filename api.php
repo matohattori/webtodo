@@ -46,11 +46,11 @@ switch ($action) {
 
   case 'add':
     $text = trim((string)($_POST['text'] ?? ''));
-    $type = (string)($_POST['type'] ?? 'task');
-    $parent_id = isset($_POST['parent_id']) ? (int)$_POST['parent_id'] : null;
+    $type = (string)($_POST['type'] ?? 'text');
     $after_id = isset($_POST['after_id']) ? (int)$_POST['after_id'] : null;
     
-    if ($text !== '' || $type === 'divider') {
+    // Allow empty text for hr, checkbox, and list types
+    if ($text !== '' || in_array($type, ['hr', 'checkbox', 'list'])) {
       if ($after_id) {
         // Insert after specific item - get its sort_order and increment all following items
         $afterOrder = $db->querySingle("SELECT sort_order FROM todos WHERE id = {$after_id}");
@@ -67,11 +67,10 @@ switch ($action) {
         $newOrder = ($maxOrder === null) ? 0 : $maxOrder + 1;
       }
       
-      $stmt = $db->prepare('INSERT INTO todos (text, done, type, sort_order, parent_id) VALUES (:text, 0, :type, :sort_order, :parent_id)');
+      $stmt = $db->prepare('INSERT INTO todos (text, done, type, sort_order, parent_id) VALUES (:text, 0, :type, :sort_order, NULL)');
       $stmt->bindValue(':text', $text, SQLITE3_TEXT);
       $stmt->bindValue(':type', $type, SQLITE3_TEXT);
       $stmt->bindValue(':sort_order', $newOrder, SQLITE3_INTEGER);
-      $stmt->bindValue(':parent_id', $parent_id, SQLITE3_INTEGER);
       $stmt->execute();
     }
     break;
@@ -89,15 +88,13 @@ switch ($action) {
     $id = (int)($_POST['id'] ?? 0);
     $text = trim((string)($_POST['text'] ?? ''));
     $type = (string)($_POST['type'] ?? '');
-    $parent_id = isset($_POST['parent_id']) ? (($_POST['parent_id'] === '' || $_POST['parent_id'] === 'null') ? null : (int)$_POST['parent_id']) : null;
-    $updateParent = isset($_POST['parent_id']);
     
     if ($id) {
       // Build dynamic SQL based on what fields are being updated
       $updates = [];
       $params = [];
       
-      if ($text !== '' || $type !== '' || $updateParent) {
+      if ($text !== '' || $type !== '') {
         if ($text !== '') {
           $updates[] = 'text = :text';
           $params[':text'] = [$text, SQLITE3_TEXT];
@@ -105,10 +102,6 @@ switch ($action) {
         if ($type !== '') {
           $updates[] = 'type = :type';
           $params[':type'] = [$type, SQLITE3_TEXT];
-        }
-        if ($updateParent) {
-          $updates[] = 'parent_id = :parent_id';
-          $params[':parent_id'] = [$parent_id, SQLITE3_INTEGER];
         }
         
         if (count($updates) > 0) {
