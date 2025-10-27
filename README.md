@@ -83,7 +83,6 @@
 - `style.css`  : コンパクトデザインのスタイル
 - `script.js`  : フロントロジック（contenteditable、スラッシュコマンド、APIコール）
 - `api.php`    : CRUD + 並び替え API（SQLite3）
-- `fonts/`     : Noto Sans JP フォント
 - `todo.db`    : 初回アクセス時に自動生成（.gitignore 対象）
 
 ## 💡 技術スタック
