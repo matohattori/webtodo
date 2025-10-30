@@ -699,7 +699,7 @@ function focusNextItem(currentId, options = {}) {
 // Move item up in order
 function moveItemUp(id) {
   const index = items.findIndex(i => i.id === id);
-  if (index <= 0) return; // Already at top
+  if (index === -1 || index === 0) return; // Not found or already at top
   
   // Swap with previous item
   const item = items[index];
@@ -707,8 +707,6 @@ function moveItemUp(id) {
   
   // Store undo data
   moveUndoData = {
-    id: id,
-    direction: 'down', // To undo, move down
     previousOrder: [...items.map(i => i.id)]
   };
   
@@ -728,7 +726,7 @@ function moveItemUp(id) {
 // Move item down in order
 function moveItemDown(id) {
   const index = items.findIndex(i => i.id === id);
-  if (index < 0 || index >= items.length - 1) return; // Already at bottom
+  if (index === -1 || index >= items.length - 1) return; // Not found or already at bottom
   
   // Swap with next item
   const item = items[index];
@@ -736,8 +734,6 @@ function moveItemDown(id) {
   
   // Store undo data
   moveUndoData = {
-    id: id,
-    direction: 'up', // To undo, move up
     previousOrder: [...items.map(i => i.id)]
   };
   
