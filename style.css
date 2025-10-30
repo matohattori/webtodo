@@ -23,6 +23,34 @@ body {
   box-shadow: none;
 }
 
+/* Toolbar */
+.toolbar {
+  display: flex;
+  justify-content: flex-end;
+  padding: 8px 4px;
+  margin-bottom: 8px;
+}
+
+.reorder-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  user-select: none;
+  font-size: 13px;
+  color: #333;
+}
+
+.reorder-toggle input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  cursor: pointer;
+}
+
+.toggle-label {
+  font-weight: 500;
+}
+
 ul {
   list-style: none;
   padding: 0;
@@ -39,6 +67,51 @@ li {
   min-height: 18px;
   line-height: 1.25;
   gap: 2px;
+}
+
+/* Reorder buttons container */
+.reorder-buttons {
+  display: none;
+  flex-direction: column;
+  gap: 0;
+  margin-right: 4px;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+
+/* Show reorder buttons when reorder mode is active */
+body.reorder-mode .reorder-buttons {
+  display: flex;
+}
+
+/* Show buttons on hover when reorder mode is active */
+body.reorder-mode li:hover .reorder-buttons {
+  opacity: 1;
+}
+
+.reorder-btn {
+  background: none;
+  border: none;
+  color: #999;
+  font-size: 14px;
+  cursor: pointer;
+  padding: 0;
+  line-height: 1;
+  width: 18px;
+  height: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: color 0.15s ease;
+}
+
+.reorder-btn:hover:not(:disabled) {
+  color: #4aa3ff;
+}
+
+.reorder-btn:disabled {
+  color: #ddd;
+  cursor: not-allowed;
 }
 
 li:hover {
@@ -245,4 +318,49 @@ button.delete:hover {
 
 li {
   animation: fadeIn 0.2s ease;
+}
+
+/* Toast notification */
+.toast {
+  position: fixed;
+  bottom: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: #333;
+  color: #fff;
+  padding: 12px 20px;
+  border-radius: 6px;
+  font-size: 13px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+  z-index: 1000;
+  animation: slideUp 0.3s ease;
+}
+
+.toast-undo {
+  background: none;
+  border: none;
+  color: #4aa3ff;
+  cursor: pointer;
+  font-size: 13px;
+  padding: 0;
+  text-decoration: underline;
+  font-weight: 500;
+}
+
+.toast-undo:hover {
+  color: #6bb6ff;
+}
+
+@keyframes slideUp {
+  from {
+    opacity: 0;
+    transform: translateX(-50%) translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
 }

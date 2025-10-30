@@ -3,6 +3,8 @@
 
 let items = [];
 let undoStack = [];
+let reorderModeEnabled = false;
+let moveUndoData = null;
 
 const list = document.getElementById('todoList');
 
@@ -232,6 +234,9 @@ function render() {
     renderItem(item);
   });
   
+  // Update reorder button states
+  updateReorderButtonStates();
+  
   // If no items exist, show single input row
   if (items.length === 0) {
     addEmptyRow();
@@ -259,6 +264,10 @@ function renderItem(item) {
     list.appendChild(li);
     return;
   }
+  
+  // Reorder buttons (↑↓) - only for normal items
+  const reorderButtons = createReorderButtons(item);
+  li.appendChild(reorderButtons);
   
   // Checkbox for checkbox type
   if (item.type === 'checkbox') {
@@ -543,6 +552,37 @@ function handleContentBlur(content, item, li) {
   }
 }
 
+// Create reorder buttons (↑↓)
+function createReorderButtons(item) {
+  const container = document.createElement('div');
+  container.className = 'reorder-buttons';
+  
+  const upBtn = document.createElement('button');
+  upBtn.className = 'reorder-btn reorder-up';
+  upBtn.textContent = '↑';
+  upBtn.title = '上へ';
+  upBtn.setAttribute('aria-label', '上へ移動');
+  upBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    moveItemUp(item.id);
+  });
+  
+  const downBtn = document.createElement('button');
+  downBtn.className = 'reorder-btn reorder-down';
+  downBtn.textContent = '↓';
+  downBtn.title = '下へ';
+  downBtn.setAttribute('aria-label', '下へ移動');
+  downBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    moveItemDown(item.id);
+  });
+  
+  container.appendChild(upBtn);
+  container.appendChild(downBtn);
+  
+  return container;
+}
+
 // Create delete button
 function createDeleteButton(id) {
   const deleteBtn = document.createElement('button');
@@ -656,7 +696,180 @@ function focusNextItem(currentId, options = {}) {
   }
 }
 
+// Move item up in order
+function moveItemUp(id) {
+  const index = items.findIndex(i => i.id === id);
+  if (index <= 0) return; // Already at top
+  
+  // Swap with previous item
+  const item = items[index];
+  const prevItem = items[index - 1];
+  
+  // Store undo data
+  moveUndoData = {
+    id: id,
+    direction: 'down', // To undo, move down
+    previousOrder: [...items.map(i => i.id)]
+  };
+  
+  // Swap in array
+  items[index] = prevItem;
+  items[index - 1] = item;
+  
+  // Update DOM order
+  render();
+  
+  // Save to server
+  reorderItems(() => {
+    showToast('1件上に移動しました', () => undoMove());
+  });
+}
+
+// Move item down in order
+function moveItemDown(id) {
+  const index = items.findIndex(i => i.id === id);
+  if (index < 0 || index >= items.length - 1) return; // Already at bottom
+  
+  // Swap with next item
+  const item = items[index];
+  const nextItem = items[index + 1];
+  
+  // Store undo data
+  moveUndoData = {
+    id: id,
+    direction: 'up', // To undo, move up
+    previousOrder: [...items.map(i => i.id)]
+  };
+  
+  // Swap in array
+  items[index] = nextItem;
+  items[index + 1] = item;
+  
+  // Update DOM order
+  render();
+  
+  // Save to server
+  reorderItems(() => {
+    showToast('1件下に移動しました', () => undoMove());
+  });
+}
+
+// Undo last move
+function undoMove() {
+  if (!moveUndoData) return;
+  
+  const { previousOrder } = moveUndoData;
+  
+  // Restore original order
+  const orderedItems = [];
+  previousOrder.forEach(id => {
+    const item = items.find(i => i.id === id);
+    if (item) orderedItems.push(item);
+  });
+  items = orderedItems;
+  
+  // Update DOM
+  render();
+  
+  // Save to server
+  reorderItems();
+  
+  // Clear undo data
+  moveUndoData = null;
+  
+  // Remove any existing toast
+  const existingToast = document.querySelector('.toast');
+  if (existingToast) {
+    existingToast.remove();
+  }
+}
+
+// Show toast notification
+function showToast(message, onUndo) {
+  // Remove any existing toast
+  const existingToast = document.querySelector('.toast');
+  if (existingToast) {
+    existingToast.remove();
+  }
+  
+  const toast = document.createElement('div');
+  toast.className = 'toast';
+  
+  const messageSpan = document.createElement('span');
+  messageSpan.textContent = message;
+  toast.appendChild(messageSpan);
+  
+  if (onUndo) {
+    const undoBtn = document.createElement('button');
+    undoBtn.className = 'toast-undo';
+    undoBtn.textContent = '↩ 戻す';
+    undoBtn.addEventListener('click', () => {
+      onUndo();
+      toast.remove();
+    });
+    toast.appendChild(undoBtn);
+  }
+  
+  document.body.appendChild(toast);
+  
+  // Auto-remove after 5 seconds
+  setTimeout(() => {
+    if (toast.parentNode) {
+      toast.remove();
+    }
+  }, 5000);
+}
+
+// Update reorder button states based on position
+function updateReorderButtonStates() {
+  items.forEach((item, index) => {
+    const li = list.querySelector(`li[data-id="${item.id}"]`);
+    if (!li) return;
+    
+    const upBtn = li.querySelector('.reorder-up');
+    const downBtn = li.querySelector('.reorder-down');
+    
+    if (upBtn) upBtn.disabled = (index === 0);
+    if (downBtn) downBtn.disabled = (index === items.length - 1);
+  });
+}
+
+// Toggle reorder mode
+function toggleReorderMode(enabled) {
+  reorderModeEnabled = enabled;
+  
+  if (enabled) {
+    document.body.classList.add('reorder-mode');
+  } else {
+    document.body.classList.remove('reorder-mode');
+  }
+  
+  // Save state to localStorage
+  localStorage.setItem('reorderModeEnabled', enabled ? '1' : '0');
+}
+
+// Load reorder mode state from localStorage
+function loadReorderModeState() {
+  const saved = localStorage.getItem('reorderModeEnabled');
+  const enabled = saved === '1';
+  
+  const checkbox = document.getElementById('reorderMode');
+  if (checkbox) {
+    checkbox.checked = enabled;
+    toggleReorderMode(enabled);
+  }
+}
+
 // Initialize
 window.addEventListener('load', () => {
   loadItems();
+  loadReorderModeState();
+  
+  // Setup reorder mode toggle
+  const reorderModeCheckbox = document.getElementById('reorderMode');
+  if (reorderModeCheckbox) {
+    reorderModeCheckbox.addEventListener('change', (e) => {
+      toggleReorderMode(e.target.checked);
+    });
+  }
 });
