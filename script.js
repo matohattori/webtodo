@@ -688,13 +688,16 @@ function toggleReorderMode() {
 function enableDragAndDrop() {
   const lis = list.querySelectorAll('li[data-id]');
   lis.forEach(li => {
-    li.setAttribute('draggable', 'true');
-    li.addEventListener('dragstart', handleDragStart);
-    li.addEventListener('dragend', handleDragEnd);
-    li.addEventListener('dragover', handleDragOver);
-    li.addEventListener('dragenter', handleDragEnter);
-    li.addEventListener('dragleave', handleDragLeave);
-    li.addEventListener('drop', handleDrop);
+    // Only add listeners if not already draggable
+    if (!li.hasAttribute('draggable')) {
+      li.setAttribute('draggable', 'true');
+      li.addEventListener('dragstart', handleDragStart);
+      li.addEventListener('dragend', handleDragEnd);
+      li.addEventListener('dragover', handleDragOver);
+      li.addEventListener('dragenter', handleDragEnter);
+      li.addEventListener('dragleave', handleDragLeave);
+      li.addEventListener('drop', handleDrop);
+    }
     
     // Disable content editing
     const content = li.querySelector('.task-content');
@@ -730,7 +733,8 @@ function handleDragStart(e) {
   draggedElement = this;
   this.classList.add('dragging');
   e.dataTransfer.effectAllowed = 'move';
-  e.dataTransfer.setData('text/html', this.innerHTML);
+  // Set a simple identifier instead of HTML content for security
+  e.dataTransfer.setData('text/plain', this.dataset.id);
 }
 
 function handleDragEnd(e) {
