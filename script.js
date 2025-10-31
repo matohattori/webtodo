@@ -277,6 +277,58 @@ function handleContextMenu(e, content, item) {
   setTimeout(() => document.addEventListener('click', closeMenu), 0);
 }
 
+// Validate URL to prevent XSS attacks
+function isValidUrl(url) {
+  try {
+    const parsed = new URL(url);
+    // Only allow http and https protocols
+    return parsed.protocol === 'http:' || parsed.protocol === 'https:';
+  } catch {
+    return false;
+  }
+}
+
+// Sanitize HTML to only allow anchor tags with safe attributes
+function sanitizeHtml(html) {
+  const temp = document.createElement('div');
+  temp.innerHTML = html;
+  
+  // Get all anchor tags
+  const anchors = temp.querySelectorAll('a');
+  
+  // Validate and sanitize each anchor
+  anchors.forEach(anchor => {
+    const href = anchor.getAttribute('href');
+    if (!href || !isValidUrl(href)) {
+      // Remove invalid anchor, keep text content
+      anchor.replaceWith(document.createTextNode(anchor.textContent));
+    } else {
+      // Keep only safe attributes
+      const safeAnchor = document.createElement('a');
+      safeAnchor.href = href;
+      safeAnchor.textContent = anchor.textContent;
+      safeAnchor.target = '_blank';
+      safeAnchor.rel = 'noopener noreferrer';
+      anchor.replaceWith(safeAnchor);
+    }
+  });
+  
+  // Remove all other tags except text and anchors
+  const walker = document.createTreeWalker(temp, NodeFilter.SHOW_ELEMENT);
+  const nodesToReplace = [];
+  let node;
+  while (node = walker.nextNode()) {
+    if (node.tagName !== 'A') {
+      nodesToReplace.push(node);
+    }
+  }
+  nodesToReplace.forEach(node => {
+    node.replaceWith(document.createTextNode(node.textContent));
+  });
+  
+  return temp.innerHTML;
+}
+
 // Prompt for hyperlink URL
 function promptForHyperlink(content, item) {
   if (!savedSelection) return;
@@ -284,7 +336,12 @@ function promptForHyperlink(content, item) {
   const url = prompt('リンク先URLを入力してください:', 'https://');
   
   if (url && url.trim()) {
-    insertHyperlink(content, item, url.trim());
+    const trimmedUrl = url.trim();
+    if (isValidUrl(trimmedUrl)) {
+      insertHyperlink(content, item, trimmedUrl);
+    } else {
+      alert('有効なURL（http://またはhttps://）を入力してください。');
+    }
   }
   
   savedSelection = null;
@@ -294,20 +351,27 @@ function promptForHyperlink(content, item) {
 function insertHyperlink(content, item, url) {
   if (!savedSelection) return;
   
-  // Restore selection
-  const selection = window.getSelection();
-  selection.removeAllRanges();
-  selection.addRange(savedSelection.range);
-  
-  // Create anchor element
-  const anchor = document.createElement('a');
-  anchor.href = url;
-  anchor.textContent = savedSelection.text;
-  anchor.target = '_blank';
-  anchor.rel = 'noopener noreferrer';
-  
-  // Replace selected text with anchor
   try {
+    // Restore selection with validation
+    const selection = window.getSelection();
+    selection.removeAllRanges();
+    
+    // Validate that the range is still valid
+    if (!savedSelection.range.startContainer.isConnected) {
+      console.error('Saved range is no longer valid');
+      return;
+    }
+    
+    selection.addRange(savedSelection.range);
+    
+    // Create anchor element
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.textContent = savedSelection.text;
+    anchor.target = '_blank';
+    anchor.rel = 'noopener noreferrer';
+    
+    // Replace selected text with anchor
     savedSelection.range.deleteContents();
     savedSelection.range.insertNode(anchor);
     
@@ -321,6 +385,7 @@ function insertHyperlink(content, item, url) {
     updateItem(item.id, { text: content.innerHTML });
   } catch (err) {
     console.error('Failed to insert hyperlink:', err);
+    alert('ハイパーリンクの追加に失敗しました。もう一度お試しください。');
   }
 }
 
@@ -397,11 +462,19 @@ function renderItem(item) {
   content.contentEditable = 'true';
   content.setAttribute('role', 'textbox');
   content.setAttribute('aria-label', getAriaLabel(item.type));
-  // Use innerHTML to support hyperlinks, but sanitize to prevent XSS
-  if (item.text && item.text.includes('<a ')) {
-    content.innerHTML = item.text;
-  } else {
-    content.textContent = item.text;
+  // Use innerHTML to support hyperlinks, with sanitization to prevent XSS
+  if (item.text) {
+    // Check if text contains HTML by trying to parse it
+    const temp = document.createElement('div');
+    temp.innerHTML = item.text;
+    const hasHtmlContent = temp.querySelector('a') !== null;
+    
+    if (hasHtmlContent) {
+      // Sanitize HTML content before rendering
+      content.innerHTML = sanitizeHtml(item.text);
+    } else {
+      content.textContent = item.text;
+    }
   }
   if (!item.text) {
     content.setAttribute('data-placeholder', getPlaceholder());
@@ -484,7 +557,8 @@ function setupContentHandlers(content, item, li) {
     if (e.target.tagName === 'A') {
       e.preventDefault();
       const url = e.target.href;
-      if (url) {
+      // Validate URL protocol before opening (defense-in-depth)
+      if (url && isValidUrl(url)) {
         window.open(url, '_blank', 'noopener,noreferrer');
       }
     }
