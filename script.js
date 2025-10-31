@@ -4,7 +4,54 @@
 let items = [];
 let undoStack = [];
 
-const list = document.getElementById('todoList');
+let list = null;
+let reorderToggleBtn = null;
+
+let reorderMode = false;
+
+const pointerDragState = {
+  active: false,
+  item: null,
+  placeholder: null,
+  pointerId: null,
+  offsetY: 0,
+  listRect: null,
+  startLeft: 0
+};
+
+let appInitialized = false;
+
+function initializeApp() {
+  if (appInitialized) return;
+
+  const listEl = document.getElementById('todoList');
+  if (!listEl) {
+    return;
+  }
+
+  list = listEl;
+  reorderToggleBtn = document.getElementById('reorderToggle');
+
+  if (reorderToggleBtn) {
+    reorderToggleBtn.addEventListener('click', () => {
+      const active = document.activeElement;
+      if (active && active.classList && active.classList.contains('task-content')) {
+        active.blur();
+      }
+      toggleReorderMode();
+    });
+  }
+
+  updateReorderButton();
+  loadItems();
+  appInitialized = true;
+}
+
+document.addEventListener('DOMContentLoaded', initializeApp);
+if (document.readyState === 'interactive' || document.readyState === 'complete') {
+  setTimeout(initializeApp, 0);
+}
+window.addEventListener('load', initializeApp);
 
 function addItemFromServer(data) {
   if (!data || typeof data.id === 'undefined') return;
@@ -17,7 +64,7 @@ function addItemFromServer(data) {
     }
     return item;
   });
-  
+
   const newItem = {
     id: data.id,
     type: data.type || 'text',
@@ -25,7 +72,7 @@ function addItemFromServer(data) {
     checked: Number(data.done) === 1,
     order: newOrder
   };
-  
+
   items.push(newItem);
   items.sort((a, b) => a.order - b.order);
   render();
@@ -94,7 +141,7 @@ function createItem(type = 'text', text = '', afterId = null, callback, options 
     if (callback) callback();
     return;
   }
-  
+
   const params = new URLSearchParams({text, type});
   if (afterId) params.append('after_id', afterId);
   if (options.allowEmpty) params.append('allow_empty', '1');
@@ -206,6 +253,7 @@ function insertItemAfter(afterId, type = 'text', text = '', callback, options = 
 
 // Reorder items based on DOM order via API
 function reorderItems(callback) {
+  if (!list) return;
   const lis = Array.from(list.querySelectorAll('li[data-id]'));
   const order = lis.map(li => li.dataset.id);
   
@@ -222,6 +270,7 @@ function reorderItems(callback) {
 
 // Render all items
 function render() {
+  if (!list) return;
   list.innerHTML = '';
   
   // Sort items by order
@@ -236,6 +285,8 @@ function render() {
   if (items.length === 0) {
     addEmptyRow();
   }
+
+  applyReorderModeToRenderedItems();
 }
 
 // Render single item
@@ -559,6 +610,7 @@ function createDeleteButton(id) {
 
 // Add empty row at the end
 function addEmptyRow() {
+  if (!list) return;
   const li = document.createElement('li');
   li.className = 'empty-row';
   li.setAttribute('tabindex', '0');
@@ -600,8 +652,212 @@ function addEmptyRow() {
   list.appendChild(li);
 }
 
+function updateReorderButton() {
+  if (!reorderToggleBtn) return;
+  reorderToggleBtn.textContent = reorderMode ? '並び替えモード: ON' : '並び替えモード: OFF';
+  reorderToggleBtn.setAttribute('aria-pressed', reorderMode ? 'true' : 'false');
+  document.body.classList.toggle('reorder-mode', reorderMode);
+}
+
+function toggleReorderMode(forceValue) {
+  const desired = typeof forceValue === 'boolean' ? forceValue : !reorderMode;
+  reorderMode = desired;
+  updateReorderButton();
+  if (!reorderMode) {
+    cancelPointerDrag(true);
+  }
+  applyReorderModeToRenderedItems();
+}
+
+function applyReorderModeToRenderedItems() {
+  if (!list) return;
+  const lis = Array.from(list.querySelectorAll('li[data-id]'));
+  lis.forEach(li => {
+    if (reorderMode) {
+      li.classList.add('reorder-enabled');
+      li.addEventListener('pointerdown', handlePointerDown);
+    } else {
+      li.classList.remove('reorder-enabled', 'dragging');
+      li.removeEventListener('pointerdown', handlePointerDown);
+      li.style.position = '';
+      li.style.left = '';
+      li.style.top = '';
+      li.style.width = '';
+      li.style.zIndex = '';
+    }
+
+    const content = li.querySelector('.task-content');
+    if (content) {
+      content.contentEditable = reorderMode ? 'false' : 'true';
+      content.classList.toggle('reorder-disabled', reorderMode);
+    }
+
+    const checkbox = li.querySelector('input[type="checkbox"]');
+    if (checkbox) {
+      checkbox.disabled = reorderMode;
+    }
+  });
+
+  const emptyRow = list.querySelector('.empty-row');
+  if (emptyRow) {
+    emptyRow.style.display = reorderMode ? 'none' : '';
+  }
+}
+
+function updateItemsOrderFromDom() {
+  if (!list) return;
+  const orderedIds = Array.from(list.querySelectorAll('li[data-id]'))
+    .map(el => String(el.dataset.id));
+  const reordered = orderedIds
+    .map(id => items.find(item => String(item.id) === id))
+    .filter(Boolean);
+  if (reordered.length === items.length) {
+    items = reordered;
+    items.forEach((item, index) => {
+      item.order = index;
+    });
+  }
+}
+
+function handlePointerDown(e) {
+  if (!reorderMode || e.button !== 0 || pointerDragState.active) return;
+  const li = e.currentTarget;
+  if (!li.dataset.id) return;
+  if (e.target && e.target.closest('button.delete')) return;
+  startPointerDrag(li, e);
+}
+
+function startPointerDrag(li, e) {
+  if (!list) return;
+  e.preventDefault();
+  pointerDragState.active = true;
+  pointerDragState.item = li;
+  pointerDragState.pointerId = e.pointerId;
+  pointerDragState.listRect = list.getBoundingClientRect();
+
+  const itemRect = li.getBoundingClientRect();
+  pointerDragState.offsetY = e.clientY - itemRect.top;
+  pointerDragState.startLeft = itemRect.left - pointerDragState.listRect.left;
+
+  pointerDragState.placeholder = document.createElement('li');
+  pointerDragState.placeholder.className = 'drag-placeholder';
+  pointerDragState.placeholder.style.height = `${itemRect.height}px`;
+  pointerDragState.placeholder.dataset.placeholder = '1';
+  list.insertBefore(pointerDragState.placeholder, li.nextSibling);
+
+  li.classList.add('dragging');
+  li.style.position = 'absolute';
+  li.style.width = `${itemRect.width}px`;
+  li.style.left = `${pointerDragState.startLeft}px`;
+  li.style.top = `${itemRect.top - pointerDragState.listRect.top}px`;
+  li.style.zIndex = '1000';
+
+  li.setPointerCapture(pointerDragState.pointerId);
+  li.addEventListener('pointermove', handlePointerMove);
+  li.addEventListener('pointerup', handlePointerUp);
+  li.addEventListener('pointercancel', handlePointerUp);
+
+  document.body.classList.add('reordering-active');
+}
+
+function handlePointerMove(e) {
+  if (!pointerDragState.active || e.pointerId !== pointerDragState.pointerId) return;
+  const li = pointerDragState.item;
+  if (!li || !pointerDragState.listRect) return;
+  const newTop = e.clientY - pointerDragState.listRect.top - pointerDragState.offsetY;
+  li.style.top = `${newTop}px`;
+  updatePointerPlaceholder(e.clientY);
+}
+
+function handlePointerUp(e) {
+  if (!pointerDragState.active || e.pointerId !== pointerDragState.pointerId) return;
+  const li = pointerDragState.item;
+  if (li) {
+    li.releasePointerCapture(pointerDragState.pointerId);
+    li.removeEventListener('pointermove', handlePointerMove);
+    li.removeEventListener('pointerup', handlePointerUp);
+    li.removeEventListener('pointercancel', handlePointerUp);
+  }
+  finishPointerDrag();
+}
+
+function updatePointerPlaceholder(clientY) {
+  if (!pointerDragState.placeholder || !list) return;
+  const siblings = Array.from(list.querySelectorAll('li[data-id]'))
+    .filter(el => el !== pointerDragState.item);
+  for (const sibling of siblings) {
+    const rect = sibling.getBoundingClientRect();
+    if (clientY < rect.top + rect.height / 2) {
+      if (pointerDragState.placeholder.nextSibling !== sibling) {
+        list.insertBefore(pointerDragState.placeholder, sibling);
+      }
+      return;
+    }
+  }
+  const emptyRow = list.querySelector('.empty-row');
+  if (emptyRow && emptyRow.parentNode === list) {
+    list.insertBefore(pointerDragState.placeholder, emptyRow);
+  } else {
+    list.appendChild(pointerDragState.placeholder);
+  }
+}
+
+function finishPointerDrag(cancelOnly = false) {
+  if (!pointerDragState.active) return;
+  const li = pointerDragState.item;
+  if (li) {
+    li.classList.remove('dragging');
+    li.style.position = '';
+    li.style.left = '';
+    li.style.top = '';
+    li.style.width = '';
+    li.style.zIndex = '';
+  }
+
+  if (pointerDragState.placeholder && pointerDragState.placeholder.parentNode) {
+    if (!cancelOnly && li) {
+      list.insertBefore(li, pointerDragState.placeholder);
+    }
+    pointerDragState.placeholder.remove();
+  }
+
+  if (!cancelOnly) {
+    updateItemsOrderFromDom();
+    reorderItems(() => {
+      if (reorderMode) {
+        applyReorderModeToRenderedItems();
+        updateReorderButton();
+      }
+    });
+  }
+
+  pointerDragState.active = false;
+  pointerDragState.item = null;
+  pointerDragState.placeholder = null;
+  pointerDragState.pointerId = null;
+  pointerDragState.listRect = null;
+  pointerDragState.offsetY = 0;
+  document.body.classList.remove('reordering-active');
+}
+
+function cancelPointerDrag(fromToggle = false) {
+  if (!pointerDragState.active) return;
+  const li = pointerDragState.item;
+  if (li) {
+    li.releasePointerCapture(pointerDragState.pointerId);
+    li.removeEventListener('pointermove', handlePointerMove);
+    li.removeEventListener('pointerup', handlePointerUp);
+    li.removeEventListener('pointercancel', handlePointerUp);
+  }
+  finishPointerDrag(true);
+  if (!fromToggle) {
+    applyReorderModeToRenderedItems();
+  }
+}
+
 // Focus item by id
 function focusItem(id, options = {}) {
+  if (!list) return;
   const position = options.position || 'end';
   setTimeout(() => {
     const li = list.querySelector(`li[data-id="${id}"]`);
@@ -629,34 +885,18 @@ function focusItem(id, options = {}) {
 // Focus previous item
 
 function focusPreviousItem(currentId, options = {}) {
-  let currentIndex = items.findIndex(i => i.id === currentId);
-  let prevIndex = currentIndex - 1;
-  while (prevIndex >= 0) {
-    const prev = items[prevIndex];
-    if (!(prev.type === 'checkbox' && prev.checked)) {
-      focusItem(prev.id, options);
-      return;
-    }
-    prevIndex--;
+  const currentIndex = items.findIndex(i => i.id === currentId);
+  if (currentIndex > 0) {
+    focusItem(items[currentIndex - 1].id, options);
   }
 }
 
 // Focus next item
 
 function focusNextItem(currentId, options = {}) {
-  let currentIndex = items.findIndex(i => i.id === currentId);
-  let nextIndex = currentIndex + 1;
-  while (nextIndex < items.length) {
-    const next = items[nextIndex];
-    if (!(next.type === 'checkbox' && next.checked)) {
-      focusItem(next.id, options);
-      return;
-    }
-    nextIndex++;
+  const currentIndex = items.findIndex(i => i.id === currentId);
+  if (currentIndex !== -1 && currentIndex < items.length - 1) {
+    focusItem(items[currentIndex + 1].id, options);
   }
 }
 
-// Initialize
-window.addEventListener('load', () => {
-  loadItems();
-});

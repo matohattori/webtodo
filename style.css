@@ -23,10 +23,39 @@ body {
   box-shadow: none;
 }
 
+.toolbar {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+#reorderToggle {
+  padding: 6px 12px;
+  border: 1px solid #4aa3ff;
+  border-radius: 4px;
+  background: white;
+  color: #1E3A5F;
+  font-size: 12px;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+
+#reorderToggle:hover {
+  background: rgba(74, 163, 255, 0.1);
+}
+
+#reorderToggle[aria-pressed="true"] {
+  background: #4aa3ff;
+  color: white;
+}
+
 ul {
   list-style: none;
   padding: 0;
   margin: 0;
+  position: relative;
 }
 
 /* Compact list items - 28-32px height */
@@ -43,6 +72,29 @@ li {
 
 li:hover {
   background: rgba(255, 255, 255, 0.4);
+}
+
+body.reorder-mode li {
+  cursor: grab;
+  user-select: none;
+}
+
+body.reorder-mode li.dragging {
+  opacity: 0.8;
+  cursor: grabbing;
+}
+
+.reordering-active .dragging {
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.12);
+}
+
+.drag-placeholder {
+  border: 1px dashed #4aa3ff;
+  border-radius: 4px;
+  margin: 2px 0;
+  background: rgba(74, 163, 255, 0.08);
+  display: block;
+  pointer-events: none;
 }
 
 li:hover .delete {
@@ -150,6 +202,13 @@ input[type="checkbox"] {
 
 .task-content[contenteditable="false"] {
   cursor: not-allowed;
+}
+
+.task-content.reorder-disabled {
+  opacity: 0.7;
+  cursor: grab;
+  user-select: none;
+  pointer-events: none;
 }
 
 /* Placeholder for empty content */

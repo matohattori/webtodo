@@ -1,0 +1,13 @@
+<ul id="L">
+  <li draggable="true">A</li>
+  <li draggable="true">B</li>
+  <li draggable="true">C</li>
+</ul>
+<script>
+const L = document.getElementById('L');
+L.addEventListener('dragstart', e => { e.dataTransfer.effectAllowed='move'; console.log('dragstart'); });
+L.addEventListener('dragenter', e => { e.preventDefault(); console.log('dragenter'); });
+L.addEventListener('dragover',  e => { e.preventDefault(); if(e.dataTransfer) e.dataTransfer.dropEffect='move'; console.log('dragover'); });
+L.addEventListener('drop',      e => { e.preventDefault(); console.log('drop'); });
+L.addEventListener('dragend',   () => console.log('dragend'));
+</script>
