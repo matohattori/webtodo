@@ -236,6 +236,11 @@ function render() {
   if (items.length === 0) {
     addEmptyRow();
   }
+  
+  // Re-enable drag and drop if in reorder mode
+  if (reorderMode) {
+    enableDragAndDrop();
+  }
 }
 
 // Render single item
@@ -492,6 +497,32 @@ function handleEnter(item, li, content) {
   const { before, after, atEnd } = splitTextAtCaret(content);
   const trimmedCurrent = before.trim();
   const trailingText = after.trim();
+
+  const insertNextRow = (nextTypeValue, textForNextRow) => {
+    insertItemAfter(item.id, nextTypeValue, textForNextRow, (data) => {
+      const newId = data && data.id;
+      if (newId) {
+        setTimeout(() => focusItem(newId, { position: 'start' }), 150);
+        return;
+      }
+      const currentIndex = items.findIndex(i => i.id === item.id);
+      if (currentIndex !== -1 && currentIndex < items.length - 1) {
+        const nextItem = items[currentIndex + 1];
+        if (nextItem) {
+          setTimeout(() => focusItem(nextItem.id, { position: 'start' }), 100);
+        }
+      }
+    }, { allowEmpty: true, skipReload: true });
+  };
+
+  const commitAndInsert = (updatedText, nextTypeValue, textForNextRow) => {
+    const proceed = () => insertNextRow(nextTypeValue, textForNextRow);
+    if (updatedText !== item.text) {
+      updateItem(item.id, { text: updatedText }, proceed);
+    } else {
+      proceed();
+    }
+  };
   
   if (!atEnd) {
     const currentText = trimmedCurrent;
@@ -501,38 +532,19 @@ function handleEnter(item, li, content) {
     } else {
       content.setAttribute('data-placeholder', getPlaceholder());
     }
-    if (currentText !== item.text) {
-      updateItem(item.id, { text: currentText });
-    }
-    
     const nextType = (item.type === 'heading') ? 'text' : resolveNextType(item);
-    
-    insertItemAfter(item.id, nextType, trailingText, (data) => {
-      const newId = data && data.id;
-      if (newId) {
-        setTimeout(() => focusItem(newId, { position: 'start' }), 150);
-      }
-    }, { allowEmpty: true, skipReload: true });
+    commitAndInsert(currentText, nextType, trailingText);
     return;
   }
   
   const text = content.textContent.trim();
-  if (text !== item.text) {
-    updateItem(item.id, { text: text });
+  if (text) {
+    content.removeAttribute('data-placeholder');
+  } else {
+    content.setAttribute('data-placeholder', getPlaceholder());
   }
-  
   const nextType = resolveNextType(item);
-  
-  insertItemAfter(item.id, nextType, '', (data) => {
-    if (data && data.id) {
-      setTimeout(() => focusItem(data.id, { position: 'start' }), 150);
-      return;
-    }
-    const currentIndex = items.findIndex(i => i.id === item.id);
-    if (currentIndex !== -1 && currentIndex < items.length - 1) {
-      setTimeout(() => focusItem(items[currentIndex + 1].id, { position: 'start' }), 100);
-    }
-  }, { allowEmpty: true });
+  commitAndInsert(text, nextType, '');
 }
 
 // Handle content blur
@@ -656,7 +668,168 @@ function focusNextItem(currentId, options = {}) {
   }
 }
 
+// Reorder mode state
+let reorderMode = false;
+let draggedElement = null;
+let draggedOverElement = null;
+
+// Toggle reorder mode
+function toggleReorderMode() {
+  reorderMode = !reorderMode;
+  const toggleBtn = document.getElementById('reorderToggle');
+  if (!toggleBtn) return;
+
+  const activeLabel = '並び替えモードを終了';
+  const inactiveLabel = '並び替えモード';
+  toggleBtn.classList.toggle('active', reorderMode);
+  toggleBtn.setAttribute('aria-pressed', reorderMode ? 'true' : 'false');
+  toggleBtn.setAttribute('aria-label', reorderMode ? activeLabel : inactiveLabel);
+  toggleBtn.setAttribute('title', reorderMode ? activeLabel : inactiveLabel);
+  
+  if (reorderMode) {
+    document.body.classList.add('reorder-mode');
+    enableDragAndDrop();
+  } else {
+    document.body.classList.remove('reorder-mode');
+    disableDragAndDrop();
+  }
+}
+
+// Enable drag and drop for all list items
+function enableDragAndDrop() {
+  const lis = list.querySelectorAll('li[data-id]');
+  lis.forEach(li => {
+    // Set draggable and add listeners
+    // Note: Elements are recreated on render, so no duplicate listeners
+    li.setAttribute('draggable', 'true');
+    li.addEventListener('dragstart', handleDragStart);
+    li.addEventListener('dragend', handleDragEnd);
+    li.addEventListener('dragover', handleDragOver);
+    li.addEventListener('dragenter', handleDragEnter);
+    li.addEventListener('dragleave', handleDragLeave);
+    li.addEventListener('drop', handleDrop);
+    
+    // Disable content editing
+    const content = li.querySelector('.task-content');
+    if (content) {
+      content.contentEditable = 'false';
+    }
+  });
+}
+
+// Disable drag and drop
+function disableDragAndDrop() {
+  const lis = list.querySelectorAll('li[data-id]');
+  lis.forEach(li => {
+    li.removeAttribute('draggable');
+    li.removeEventListener('dragstart', handleDragStart);
+    li.removeEventListener('dragend', handleDragEnd);
+    li.removeEventListener('dragover', handleDragOver);
+    li.removeEventListener('dragenter', handleDragEnter);
+    li.removeEventListener('dragleave', handleDragLeave);
+    li.removeEventListener('drop', handleDrop);
+    li.classList.remove('dragging', 'drag-over', 'drag-over-bottom');
+    
+    // Re-enable content editing
+    const content = li.querySelector('.task-content');
+    if (content) {
+      content.contentEditable = 'true';
+    }
+  });
+}
+
+// Drag event handlers
+function handleDragStart(e) {
+  draggedElement = this;
+  this.classList.add('dragging');
+  e.dataTransfer.effectAllowed = 'move';
+  // Set a simple identifier instead of HTML content for security
+  e.dataTransfer.setData('text/plain', this.dataset.id);
+}
+
+function handleDragEnd(e) {
+  this.classList.remove('dragging');
+  
+  // Remove all drag-over classes
+  const lis = list.querySelectorAll('li[data-id]');
+  lis.forEach(li => {
+    li.classList.remove('drag-over', 'drag-over-bottom');
+  });
+  
+  draggedElement = null;
+  draggedOverElement = null;
+}
+
+function handleDragOver(e) {
+  e.preventDefault();
+  e.dataTransfer.dropEffect = 'move';
+  return false;
+}
+
+function handleDragEnter(e) {
+  if (this === draggedElement) return;
+  
+  const rect = this.getBoundingClientRect();
+  const midpoint = rect.top + rect.height / 2;
+  
+  // Remove previous drag-over classes
+  const lis = list.querySelectorAll('li[data-id]');
+  lis.forEach(li => {
+    li.classList.remove('drag-over', 'drag-over-bottom');
+  });
+  
+  // Determine if we're dragging over top or bottom half
+  if (e.clientY < midpoint) {
+    this.classList.add('drag-over');
+  } else {
+    this.classList.add('drag-over-bottom');
+  }
+  
+  draggedOverElement = this;
+}
+
+function handleDragLeave(e) {
+  // Check if we're leaving the current element (not just a child)
+  const rect = this.getBoundingClientRect();
+  if (e.clientX < rect.left || e.clientX >= rect.right ||
+      e.clientY < rect.top || e.clientY >= rect.bottom) {
+    this.classList.remove('drag-over', 'drag-over-bottom');
+  }
+}
+
+function handleDrop(e) {
+  e.stopPropagation();
+  e.preventDefault();
+  
+  if (draggedElement === this) {
+    return false;
+  }
+  
+  const rect = this.getBoundingClientRect();
+  const midpoint = rect.top + rect.height / 2;
+  const insertBefore = e.clientY < midpoint;
+  
+  // Move the dragged element in the DOM
+  if (insertBefore) {
+    this.parentNode.insertBefore(draggedElement, this);
+  } else {
+    this.parentNode.insertBefore(draggedElement, this.nextSibling);
+  }
+  
+  // Update order in the backend
+  reorderItems();
+  
+  return false;
+}
+
 // Initialize
 window.addEventListener('load', () => {
   loadItems();
+  
+  // Setup reorder toggle button
+  const toggleBtn = document.getElementById('reorderToggle');
+  if (toggleBtn) {
+    toggleBtn.setAttribute('aria-pressed', 'false');
+    toggleBtn.addEventListener('click', toggleReorderMode);
+  }
 });

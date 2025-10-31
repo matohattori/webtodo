@@ -23,6 +23,50 @@ body {
   box-shadow: none;
 }
 
+/* Floating reorder toggle */
+.reorder-toggle {
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  color: #4f5f74;
+  border: 1px solid rgba(79, 95, 116, 0.35);
+  cursor: pointer;
+  box-shadow: none;
+  transition: background-color 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease, color 0.2s ease;
+  font-size: 16px;
+  line-height: 1;
+  z-index: 100;
+}
+
+.reorder-toggle span {
+  pointer-events: none;
+  font-family: "Segoe Fluent Icons", "Segoe MDL2 Assets", sans-serif;
+}
+
+.reorder-toggle:hover {
+  color: #2f3c4d;
+  border-color: rgba(47, 60, 77, 0.45);
+}
+
+.reorder-toggle.active {
+  background: rgba(74, 163, 255, 0.22);
+  color: #2a7bd6;
+  border-color: rgba(42, 123, 214, 0.45);
+}
+
+.reorder-toggle.active:hover {
+  background: rgba(42, 123, 214, 0.3);
+  color: #1f5fa6;
+  border-color: rgba(31, 95, 166, 0.55);
+}
+
 ul {
   list-style: none;
   padding: 0;
@@ -216,6 +260,14 @@ button.delete:hover {
     border-radius: 4px;
   }
   
+  .reorder-toggle {
+    bottom: 16px;
+    right: 16px;
+    width: 28px;
+    height: 28px;
+    font-size: 15px;
+  }
+  
   li {
     padding: 0 3px;
     min-height: 20px;
@@ -245,4 +297,53 @@ button.delete:hover {
 
 li {
   animation: fadeIn 0.2s ease;
+}
+
+/* Reorder mode styles */
+body.reorder-mode li {
+  cursor: move;
+  padding-left: 24px;
+  position: relative;
+}
+
+body.reorder-mode li::before {
+  content: '⋮⋮';
+  position: absolute;
+  left: 4px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: #999;
+  font-size: 14px;
+  letter-spacing: -2px;
+  user-select: none;
+}
+
+body.reorder-mode li[draggable="true"] {
+  cursor: grab;
+}
+
+body.reorder-mode li.dragging {
+  opacity: 0.5;
+  cursor: grabbing;
+}
+
+body.reorder-mode li.drag-over {
+  border-top: 2px solid #4aa3ff;
+}
+
+body.reorder-mode li.drag-over-bottom {
+  border-bottom: 2px solid #4aa3ff;
+}
+
+body.reorder-mode .task-content {
+  pointer-events: none;
+  user-select: none;
+}
+
+body.reorder-mode .delete {
+  display: none;
+}
+
+body.reorder-mode input[type="checkbox"] {
+  pointer-events: none;
 }
