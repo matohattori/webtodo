@@ -497,6 +497,32 @@ function handleEnter(item, li, content) {
   const { before, after, atEnd } = splitTextAtCaret(content);
   const trimmedCurrent = before.trim();
   const trailingText = after.trim();
+
+  const insertNextRow = (nextTypeValue, textForNextRow) => {
+    insertItemAfter(item.id, nextTypeValue, textForNextRow, (data) => {
+      const newId = data && data.id;
+      if (newId) {
+        setTimeout(() => focusItem(newId, { position: 'start' }), 150);
+        return;
+      }
+      const currentIndex = items.findIndex(i => i.id === item.id);
+      if (currentIndex !== -1 && currentIndex < items.length - 1) {
+        const nextItem = items[currentIndex + 1];
+        if (nextItem) {
+          setTimeout(() => focusItem(nextItem.id, { position: 'start' }), 100);
+        }
+      }
+    }, { allowEmpty: true, skipReload: true });
+  };
+
+  const commitAndInsert = (updatedText, nextTypeValue, textForNextRow) => {
+    const proceed = () => insertNextRow(nextTypeValue, textForNextRow);
+    if (updatedText !== item.text) {
+      updateItem(item.id, { text: updatedText }, proceed);
+    } else {
+      proceed();
+    }
+  };
   
   if (!atEnd) {
     const currentText = trimmedCurrent;
@@ -506,38 +532,19 @@ function handleEnter(item, li, content) {
     } else {
       content.setAttribute('data-placeholder', getPlaceholder());
     }
-    if (currentText !== item.text) {
-      updateItem(item.id, { text: currentText });
-    }
-    
     const nextType = (item.type === 'heading') ? 'text' : resolveNextType(item);
-    
-    insertItemAfter(item.id, nextType, trailingText, (data) => {
-      const newId = data && data.id;
-      if (newId) {
-        setTimeout(() => focusItem(newId, { position: 'start' }), 150);
-      }
-    }, { allowEmpty: true, skipReload: true });
+    commitAndInsert(currentText, nextType, trailingText);
     return;
   }
   
   const text = content.textContent.trim();
-  if (text !== item.text) {
-    updateItem(item.id, { text: text });
+  if (text) {
+    content.removeAttribute('data-placeholder');
+  } else {
+    content.setAttribute('data-placeholder', getPlaceholder());
   }
-  
   const nextType = resolveNextType(item);
-  
-  insertItemAfter(item.id, nextType, '', (data) => {
-    if (data && data.id) {
-      setTimeout(() => focusItem(data.id, { position: 'start' }), 150);
-      return;
-    }
-    const currentIndex = items.findIndex(i => i.id === item.id);
-    if (currentIndex !== -1 && currentIndex < items.length - 1) {
-      setTimeout(() => focusItem(items[currentIndex + 1].id, { position: 'start' }), 100);
-    }
-  }, { allowEmpty: true });
+  commitAndInsert(text, nextType, '');
 }
 
 // Handle content blur
@@ -670,16 +677,20 @@ let draggedOverElement = null;
 function toggleReorderMode() {
   reorderMode = !reorderMode;
   const toggleBtn = document.getElementById('reorderToggle');
+  if (!toggleBtn) return;
+
+  const activeLabel = '並び替えモードを終了';
+  const inactiveLabel = '並び替えモード';
+  toggleBtn.classList.toggle('active', reorderMode);
+  toggleBtn.setAttribute('aria-pressed', reorderMode ? 'true' : 'false');
+  toggleBtn.setAttribute('aria-label', reorderMode ? activeLabel : inactiveLabel);
+  toggleBtn.setAttribute('title', reorderMode ? activeLabel : inactiveLabel);
   
   if (reorderMode) {
     document.body.classList.add('reorder-mode');
-    toggleBtn.classList.add('active');
-    toggleBtn.textContent = '完了';
     enableDragAndDrop();
   } else {
     document.body.classList.remove('reorder-mode');
-    toggleBtn.classList.remove('active');
-    toggleBtn.textContent = '並び替え';
     disableDragAndDrop();
   }
 }
@@ -818,6 +829,7 @@ window.addEventListener('load', () => {
   // Setup reorder toggle button
   const toggleBtn = document.getElementById('reorderToggle');
   if (toggleBtn) {
+    toggleBtn.setAttribute('aria-pressed', 'false');
     toggleBtn.addEventListener('click', toggleReorderMode);
   }
 });

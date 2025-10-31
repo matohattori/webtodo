@@ -23,39 +23,48 @@ body {
   box-shadow: none;
 }
 
-/* Toolbar */
-.toolbar {
-  display: flex;
-  justify-content: flex-end;
-  margin-bottom: 12px;
-  gap: 8px;
+/* Floating reorder toggle */
+.reorder-toggle {
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  color: #4f5f74;
+  border: 1px solid rgba(79, 95, 116, 0.35);
+  cursor: pointer;
+  box-shadow: none;
+  transition: background-color 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease, color 0.2s ease;
+  font-size: 16px;
+  line-height: 1;
+  z-index: 100;
 }
 
-.reorder-toggle {
-  background: #fff;
-  border: 1px solid #CCC;
-  border-radius: 4px;
-  padding: 6px 12px;
-  font-size: 12px;
-  cursor: pointer;
-  transition: all 0.2s ease;
-  color: #333;
+.reorder-toggle span {
+  pointer-events: none;
+  font-family: "Segoe Fluent Icons", "Segoe MDL2 Assets", sans-serif;
 }
 
 .reorder-toggle:hover {
-  background: #f5f5f5;
-  border-color: #999;
+  color: #2f3c4d;
+  border-color: rgba(47, 60, 77, 0.45);
 }
 
 .reorder-toggle.active {
-  background: #4aa3ff;
-  border-color: #4aa3ff;
-  color: white;
+  background: rgba(74, 163, 255, 0.22);
+  color: #2a7bd6;
+  border-color: rgba(42, 123, 214, 0.45);
 }
 
 .reorder-toggle.active:hover {
-  background: #3a93ef;
-  border-color: #3a93ef;
+  background: rgba(42, 123, 214, 0.3);
+  color: #1f5fa6;
+  border-color: rgba(31, 95, 166, 0.55);
 }
 
 ul {
@@ -249,6 +258,14 @@ button.delete:hover {
   .container {
     padding: 8px;
     border-radius: 4px;
+  }
+  
+  .reorder-toggle {
+    bottom: 16px;
+    right: 16px;
+    width: 28px;
+    height: 28px;
+    font-size: 15px;
   }
   
   li {
