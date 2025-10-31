@@ -236,6 +236,11 @@ function render() {
   if (items.length === 0) {
     addEmptyRow();
   }
+  
+  // Re-enable drag and drop if in reorder mode
+  if (reorderMode) {
+    enableDragAndDrop();
+  }
 }
 
 // Render single item
@@ -656,7 +661,161 @@ function focusNextItem(currentId, options = {}) {
   }
 }
 
+// Reorder mode state
+let reorderMode = false;
+let draggedElement = null;
+let draggedOverElement = null;
+
+// Toggle reorder mode
+function toggleReorderMode() {
+  reorderMode = !reorderMode;
+  const toggleBtn = document.getElementById('reorderToggle');
+  
+  if (reorderMode) {
+    document.body.classList.add('reorder-mode');
+    toggleBtn.classList.add('active');
+    toggleBtn.textContent = '完了';
+    enableDragAndDrop();
+  } else {
+    document.body.classList.remove('reorder-mode');
+    toggleBtn.classList.remove('active');
+    toggleBtn.textContent = '並び替え';
+    disableDragAndDrop();
+  }
+}
+
+// Enable drag and drop for all list items
+function enableDragAndDrop() {
+  const lis = list.querySelectorAll('li[data-id]');
+  lis.forEach(li => {
+    li.setAttribute('draggable', 'true');
+    li.addEventListener('dragstart', handleDragStart);
+    li.addEventListener('dragend', handleDragEnd);
+    li.addEventListener('dragover', handleDragOver);
+    li.addEventListener('dragenter', handleDragEnter);
+    li.addEventListener('dragleave', handleDragLeave);
+    li.addEventListener('drop', handleDrop);
+    
+    // Disable content editing
+    const content = li.querySelector('.task-content');
+    if (content) {
+      content.contentEditable = 'false';
+    }
+  });
+}
+
+// Disable drag and drop
+function disableDragAndDrop() {
+  const lis = list.querySelectorAll('li[data-id]');
+  lis.forEach(li => {
+    li.removeAttribute('draggable');
+    li.removeEventListener('dragstart', handleDragStart);
+    li.removeEventListener('dragend', handleDragEnd);
+    li.removeEventListener('dragover', handleDragOver);
+    li.removeEventListener('dragenter', handleDragEnter);
+    li.removeEventListener('dragleave', handleDragLeave);
+    li.removeEventListener('drop', handleDrop);
+    li.classList.remove('dragging', 'drag-over', 'drag-over-bottom');
+    
+    // Re-enable content editing
+    const content = li.querySelector('.task-content');
+    if (content) {
+      content.contentEditable = 'true';
+    }
+  });
+}
+
+// Drag event handlers
+function handleDragStart(e) {
+  draggedElement = this;
+  this.classList.add('dragging');
+  e.dataTransfer.effectAllowed = 'move';
+  e.dataTransfer.setData('text/html', this.innerHTML);
+}
+
+function handleDragEnd(e) {
+  this.classList.remove('dragging');
+  
+  // Remove all drag-over classes
+  const lis = list.querySelectorAll('li[data-id]');
+  lis.forEach(li => {
+    li.classList.remove('drag-over', 'drag-over-bottom');
+  });
+  
+  draggedElement = null;
+  draggedOverElement = null;
+}
+
+function handleDragOver(e) {
+  if (e.preventDefault) {
+    e.preventDefault();
+  }
+  e.dataTransfer.dropEffect = 'move';
+  return false;
+}
+
+function handleDragEnter(e) {
+  if (this === draggedElement) return;
+  
+  const rect = this.getBoundingClientRect();
+  const midpoint = rect.top + rect.height / 2;
+  
+  // Remove previous drag-over classes
+  const lis = list.querySelectorAll('li[data-id]');
+  lis.forEach(li => {
+    li.classList.remove('drag-over', 'drag-over-bottom');
+  });
+  
+  // Determine if we're dragging over top or bottom half
+  if (e.clientY < midpoint) {
+    this.classList.add('drag-over');
+  } else {
+    this.classList.add('drag-over-bottom');
+  }
+  
+  draggedOverElement = this;
+}
+
+function handleDragLeave(e) {
+  // Only remove classes if we're actually leaving the element
+  if (e.target === this) {
+    this.classList.remove('drag-over', 'drag-over-bottom');
+  }
+}
+
+function handleDrop(e) {
+  if (e.stopPropagation) {
+    e.stopPropagation();
+  }
+  
+  if (draggedElement === this) {
+    return false;
+  }
+  
+  const rect = this.getBoundingClientRect();
+  const midpoint = rect.top + rect.height / 2;
+  const insertBefore = e.clientY < midpoint;
+  
+  // Move the dragged element in the DOM
+  if (insertBefore) {
+    this.parentNode.insertBefore(draggedElement, this);
+  } else {
+    this.parentNode.insertBefore(draggedElement, this.nextSibling);
+  }
+  
+  // Update order in the backend
+  reorderItems();
+  
+  return false;
+}
+
 // Initialize
 window.addEventListener('load', () => {
   loadItems();
+  
+  // Setup reorder toggle button
+  const toggleBtn = document.getElementById('reorderToggle');
+  if (toggleBtn) {
+    toggleBtn.addEventListener('click', toggleReorderMode);
+  }
 });
