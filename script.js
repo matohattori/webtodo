@@ -317,7 +317,7 @@ function sanitizeHtml(html) {
   const walker = document.createTreeWalker(temp, NodeFilter.SHOW_ELEMENT);
   const nodesToReplace = [];
   let node;
-  while (node = walker.nextNode()) {
+  while ((node = walker.nextNode()) !== null) {
     if (node.tagName !== 'A') {
       nodesToReplace.push(node);
     }
@@ -381,8 +381,9 @@ function insertHyperlink(content, item, url) {
     selection.removeAllRanges();
     selection.addRange(savedSelection.range);
     
-    // Update the item text with the new HTML content
-    updateItem(item.id, { text: content.innerHTML });
+    // Sanitize and update the item text with the new HTML content
+    const sanitizedContent = sanitizeHtml(content.innerHTML);
+    updateItem(item.id, { text: sanitizedContent });
   } catch (err) {
     console.error('Failed to insert hyperlink:', err);
     alert('ハイパーリンクの追加に失敗しました。もう一度お試しください。');
@@ -464,15 +465,12 @@ function renderItem(item) {
   content.setAttribute('aria-label', getAriaLabel(item.type));
   // Use innerHTML to support hyperlinks, with sanitization to prevent XSS
   if (item.text) {
-    // Check if text contains HTML by trying to parse it
-    const temp = document.createElement('div');
-    temp.innerHTML = item.text;
-    const hasHtmlContent = temp.querySelector('a') !== null;
-    
-    if (hasHtmlContent) {
-      // Sanitize HTML content before rendering
+    // Check if text contains HTML tags
+    if (item.text.includes('<') && item.text.includes('>')) {
+      // Has HTML content - sanitize and render
       content.innerHTML = sanitizeHtml(item.text);
     } else {
+      // Plain text only
       content.textContent = item.text;
     }
   }
@@ -750,7 +748,7 @@ function handleEnter(item, li, content) {
 function handleContentBlur(content, item, li) {
   // Check if content has hyperlinks
   const hasHyperlinks = content.querySelector('a') !== null;
-  const newContent = hasHyperlinks ? content.innerHTML : content.textContent.trim();
+  const newContent = hasHyperlinks ? sanitizeHtml(content.innerHTML) : content.textContent.trim();
   
   // Compare with existing content
   const oldContent = item.text || '';
