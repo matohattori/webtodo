@@ -688,16 +688,15 @@ function toggleReorderMode() {
 function enableDragAndDrop() {
   const lis = list.querySelectorAll('li[data-id]');
   lis.forEach(li => {
-    // Only add listeners if not already draggable
-    if (!li.hasAttribute('draggable')) {
-      li.setAttribute('draggable', 'true');
-      li.addEventListener('dragstart', handleDragStart);
-      li.addEventListener('dragend', handleDragEnd);
-      li.addEventListener('dragover', handleDragOver);
-      li.addEventListener('dragenter', handleDragEnter);
-      li.addEventListener('dragleave', handleDragLeave);
-      li.addEventListener('drop', handleDrop);
-    }
+    // Set draggable and add listeners
+    // Note: Elements are recreated on render, so no duplicate listeners
+    li.setAttribute('draggable', 'true');
+    li.addEventListener('dragstart', handleDragStart);
+    li.addEventListener('dragend', handleDragEnd);
+    li.addEventListener('dragover', handleDragOver);
+    li.addEventListener('dragenter', handleDragEnter);
+    li.addEventListener('dragleave', handleDragLeave);
+    li.addEventListener('drop', handleDrop);
     
     // Disable content editing
     const content = li.querySelector('.task-content');
@@ -751,9 +750,7 @@ function handleDragEnd(e) {
 }
 
 function handleDragOver(e) {
-  if (e.preventDefault) {
-    e.preventDefault();
-  }
+  e.preventDefault();
   e.dataTransfer.dropEffect = 'move';
   return false;
 }
@@ -781,16 +778,17 @@ function handleDragEnter(e) {
 }
 
 function handleDragLeave(e) {
-  // Only remove classes if we're actually leaving the element
-  if (e.target === this) {
+  // Check if we're leaving the current element (not just a child)
+  const rect = this.getBoundingClientRect();
+  if (e.clientX < rect.left || e.clientX >= rect.right ||
+      e.clientY < rect.top || e.clientY >= rect.bottom) {
     this.classList.remove('drag-over', 'drag-over-bottom');
   }
 }
 
 function handleDrop(e) {
-  if (e.stopPropagation) {
-    e.stopPropagation();
-  }
+  e.stopPropagation();
+  e.preventDefault();
   
   if (draggedElement === this) {
     return false;
