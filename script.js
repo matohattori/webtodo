@@ -743,7 +743,8 @@ function updateItem(id, updates, callback, options = {}) {
   const item = items.find(i => i.id === id);
   if (!item) return;
 
-  // Capture state before updating (skip if it's an undo/redo operation)
+  // Capture state before updating
+  // skipUndoCapture option available for future use if undo/redo operations need to update without capturing
   if (!options.skipUndoCapture) {
     captureStateForUndo('update', { id, updates });
   }
@@ -2302,9 +2303,11 @@ function handleKeyDown(e, content, item, li) {
     e.preventDefault();
     handleEmptyLineBackspace(item, content);
   } else if (e.key === 'z' && (e.ctrlKey || e.metaKey) && !e.shiftKey) {
+    // Undo within content editing context
     e.preventDefault();
     performUndo();
   } else if ((e.key === 'y' && (e.ctrlKey || e.metaKey)) || (e.key === 'z' && (e.ctrlKey || e.metaKey) && e.shiftKey)) {
+    // Redo within content editing context
     e.preventDefault();
     performRedo();
   }
@@ -2713,7 +2716,8 @@ window.addEventListener('load', () => {
     toggleBtn.addEventListener('click', toggleReorderMode);
   }
   
-  // Setup global keyboard shortcuts for undo/redo
+  // Setup global keyboard shortcuts for undo/redo (when not focused on editable elements)
+  // This is separate from the content-specific handlers to provide global shortcuts
   document.addEventListener('keydown', (e) => {
     // Only handle if not in an input, textarea, or contenteditable
     const target = e.target;
