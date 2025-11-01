@@ -276,7 +276,8 @@ function toggleBoldSelection(content) {
     return false;
   }
 
-  const analysis = analyzeBoldFragment(range.cloneContents());
+  // Analyze the actual DOM range, not a cloned fragment
+  const analysis = analyzeBoldInRange(range, content);
   if (!analysis.hasText) {
     return false;
   }
@@ -327,6 +328,72 @@ function toggleBoldSelection(content) {
     console.warn('選択範囲の復元に失敗:', err);
     return false;
   }
+}
+
+function analyzeBoldInRange(range, content) {
+  // Analyze by checking actual DOM nodes within the range
+  // This is more reliable than cloning contents
+  let hasText = false;
+  let allBold = true;
+  
+  // Get the start and end containers
+  let startNode = range.startContainer;
+  let endNode = range.endContainer;
+  
+  // If containers are elements, get the text nodes
+  if (startNode.nodeType === Node.ELEMENT_NODE && startNode.childNodes.length > 0) {
+    startNode = startNode.childNodes[range.startOffset] || startNode;
+  }
+  if (endNode.nodeType === Node.ELEMENT_NODE && endNode.childNodes.length > 0) {
+    const childIndex = Math.max(0, range.endOffset - 1);
+    endNode = endNode.childNodes[childIndex] || endNode;
+  }
+  
+  // Handle single text node selection
+  if (startNode === endNode && startNode.nodeType === Node.TEXT_NODE) {
+    const selectedText = startNode.textContent.substring(range.startOffset, range.endOffset);
+    if (selectedText.trim().length > 0) {
+      hasText = true;
+      allBold = isTextNodeWithinBold(startNode);
+    }
+    return { hasText, allBold };
+  }
+  
+  // Handle multi-node selection
+  // Walk through all text nodes in the content
+  const walker = document.createTreeWalker(content, NodeFilter.SHOW_TEXT, null);
+  let node = walker.nextNode();
+  
+  while (node) {
+    // Check if this node is within the range
+    if (range.intersectsNode(node)) {
+      let text = node.textContent || '';
+      let startIdx = 0;
+      let endIdx = text.length;
+      
+      // If this is the start node, only consider text after startOffset
+      if (node === range.startContainer) {
+        startIdx = range.startOffset;
+      }
+      // If this is the end node, only consider text before endOffset
+      if (node === range.endContainer) {
+        endIdx = range.endOffset;
+      }
+      
+      // Extract the relevant portion of text
+      text = text.substring(startIdx, endIdx);
+      
+      if (text.trim().length > 0) {
+        hasText = true;
+        if (!isTextNodeWithinBold(node)) {
+          allBold = false;
+        }
+      }
+    }
+    node = walker.nextNode();
+  }
+  
+  return { hasText, allBold };
 }
 
 function analyzeBoldFragment(fragment) {

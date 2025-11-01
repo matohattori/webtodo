@@ -28,8 +28,8 @@ body {
   position: fixed;
   bottom: 24px;
   right: 24px;
-  width: 32px;
-  height: 32px;
+  width: 26px;
+  height: 26px;
   border-radius: 50%;
   display: inline-flex;
   align-items: center;
@@ -40,7 +40,7 @@ body {
   cursor: pointer;
   box-shadow: none;
   transition: background-color 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease, color 0.2s ease;
-  font-size: 16px;
+  font-size: 13px;
   line-height: 1;
   z-index: 100;
 }
@@ -263,9 +263,9 @@ button.delete:hover {
   .reorder-toggle {
     bottom: 16px;
     right: 16px;
-    width: 28px;
-    height: 28px;
-    font-size: 15px;
+    width: 22px;
+    height: 22px;
+    font-size: 12px;
   }
   
   li {
