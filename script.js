@@ -1,10 +1,30 @@
-// Data structure: { id, type, text, checked, order }
+﻿// Data structure: { id, type, text, checked, order }
 // type: 'text' | 'checkbox' | 'list' | 'hr' | 'heading'
 
 let items = [];
 let undoStack = [];
 
 const list = document.getElementById('todoList');
+
+const LINK_DETECTION_REGEX = /(?:https?:\/\/[^\s<>"']+|[A-Za-z]:[\\/][^\s<>"']+|\\\\[^\s<>"']+)/gi;
+const TEXT_COLOR_OPTIONS = [
+  { id: 'default', label: '標準', color: '' },
+  { id: 'red', label: '赤', color: '#DC2626' },
+  { id: 'orange', label: 'オレンジ', color: '#D97706' },
+  { id: 'yellow', label: '黄', color: '#CA8A04' },
+  { id: 'green', label: '緑', color: '#16A34A' },
+  { id: 'blue', label: '青', color: '#2563EB' },
+  { id: 'purple', label: '紫', color: '#7C3AED' },
+  { id: 'pink', label: 'ピンク', color: '#DB2777' },
+  { id: 'gray', label: 'グレー', color: '#4B5563' }
+];
+
+const TEXT_COLOR_MAP = TEXT_COLOR_OPTIONS.reduce((acc, option) => {
+  if (option.color) {
+    acc[option.id] = option.color;
+  }
+  return acc;
+}, {});
 
 function addItemFromServer(data) {
   if (!data || typeof data.id === 'undefined') return;
@@ -61,6 +81,355 @@ function splitTextAtCaret(content) {
   };
 }
 
+function getRangeOffsetsWithin(container, range) {
+  if (!container || !range) return { start: null, end: null };
+  try {
+    const startRange = range.cloneRange();
+    startRange.selectNodeContents(container);
+    startRange.setEnd(range.startContainer, range.startOffset);
+    const start = startRange.toString().length;
+    
+    const endRange = range.cloneRange();
+    endRange.selectNodeContents(container);
+    endRange.setEnd(range.endContainer, range.endOffset);
+    const end = endRange.toString().length;
+    
+    return { start, end };
+  } catch {
+    return { start: null, end: null };
+  }
+}
+
+function resolveOffsetToRangePoint(container, targetOffset) {
+  if (!container || targetOffset === null || targetOffset === undefined) return null;
+  
+  const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT, null);
+  let current = 0;
+  let node = walker.nextNode();
+  
+  while (node) {
+    const length = node.textContent.length;
+    if (targetOffset <= current + length) {
+      return { node, offset: targetOffset - current };
+    }
+    current += length;
+    node = walker.nextNode();
+  }
+  
+  if (container.lastChild && container.lastChild.nodeType === Node.TEXT_NODE) {
+    return { node: container.lastChild, offset: container.lastChild.textContent.length };
+  }
+  return { node: container, offset: container.childNodes.length };
+}
+
+function resolveSelectionContext(range, contextHint) {
+  let container = contextHint || null;
+  if (!container && range) {
+    let candidate = range.commonAncestorContainer;
+    if (candidate && candidate.nodeType !== Node.ELEMENT_NODE) {
+      candidate = candidate.parentElement;
+    }
+    container = candidate;
+  }
+  if (container && container.closest) {
+    const taskContent = container.closest('.task-content');
+    if (taskContent) {
+      container = taskContent;
+    }
+  }
+  if (container && container.nodeType === Node.ELEMENT_NODE) {
+    return container;
+  }
+  return null;
+}
+
+function unwrapElement(element) {
+  if (!element || !element.parentNode) return;
+  const parent = element.parentNode;
+  while (element.firstChild) {
+    parent.insertBefore(element.firstChild, element);
+  }
+  parent.removeChild(element);
+}
+
+function saveSelectionSnapshot(selection, contextHint) {
+  if (!selection || selection.rangeCount === 0) {
+    savedSelection = null;
+    return;
+  }
+  const range = selection.getRangeAt(0);
+  const context = resolveSelectionContext(range, contextHint);
+  const offsets = context ? getRangeOffsetsWithin(context, range) : { start: null, end: null };
+  
+  savedSelection = {
+    range: range.cloneRange(),
+    text: selection.toString(),
+    context,
+    start: offsets.start,
+    end: offsets.end
+  };
+}
+
+function restoreSelectionForContent(content) {
+  const selection = window.getSelection();
+  if (!selection) return false;
+  if (!savedSelection) return false;
+  
+  const targetContent = content || savedSelection.context || null;
+  const savedRange = savedSelection.range;
+  
+  if (savedRange && savedRange.startContainer && savedRange.startContainer.isConnected &&
+      (!targetContent || targetContent.contains(savedRange.startContainer))) {
+    selection.removeAllRanges();
+    selection.addRange(savedRange.cloneRange());
+    return true;
+  }
+  
+  if (!targetContent || !targetContent.isConnected) {
+    return false;
+  }
+  
+  if (typeof savedSelection.start !== 'number' || typeof savedSelection.end !== 'number') {
+    return false;
+  }
+  
+  const totalLength = targetContent.textContent.length;
+  const startOffset = Math.max(0, Math.min(savedSelection.start, totalLength));
+  const endOffset = Math.max(startOffset, Math.min(savedSelection.end, totalLength));
+  
+  const startPoint = resolveOffsetToRangePoint(targetContent, startOffset);
+  const endPoint = resolveOffsetToRangePoint(targetContent, endOffset);
+  if (!startPoint || !endPoint || !startPoint.node || !endPoint.node) {
+    return false;
+  }
+  
+  try {
+    const newRange = document.createRange();
+    newRange.setStart(startPoint.node, startPoint.offset);
+    newRange.setEnd(endPoint.node, endPoint.offset);
+    selection.removeAllRanges();
+    selection.addRange(newRange);
+    savedSelection.range = newRange.cloneRange();
+    savedSelection.context = targetContent;
+    return true;
+  } catch (err) {
+    console.warn('Failed to restore selection from offsets:', err);
+    return false;
+  }
+}
+
+function refreshSavedSelection(content) {
+  const selection = window.getSelection();
+  if (!selection || selection.rangeCount === 0) {
+    savedSelection = null;
+    return;
+  }
+  const range = selection.getRangeAt(0);
+  if (content && !content.contains(range.commonAncestorContainer)) {
+    return;
+  }
+  saveSelectionSnapshot(selection, content);
+}
+
+function getSelectionRangeWithinContent(content) {
+  const selection = window.getSelection();
+  if (!selection || selection.rangeCount === 0) return null;
+  const range = selection.getRangeAt(0);
+  if (!content.contains(range.commonAncestorContainer)) return null;
+  if (range.collapsed) return null;
+  return range;
+}
+
+function findExactWrapper(range, content, predicate) {
+  if (!range) return null;
+  let node = range.startContainer;
+  if (node.nodeType === Node.TEXT_NODE) {
+    node = node.parentElement;
+  }
+  while (node && node !== content) {
+    if (predicate(node)) {
+      const candidateRange = document.createRange();
+      candidateRange.selectNodeContents(node);
+      if (candidateRange.compareBoundaryPoints(Range.START_TO_START, range) === 0 &&
+          candidateRange.compareBoundaryPoints(Range.END_TO_END, range) === 0) {
+        return node;
+      }
+    }
+    node = node.parentElement;
+  }
+  return null;
+}
+
+function toggleBoldSelection(content) {
+  const range = getSelectionRangeWithinContent(content);
+  if (!range) return false;
+  const initialSelection = window.getSelection();
+  if (initialSelection && typeof document.execCommand === 'function') {
+    try {
+      const result = document.execCommand('bold', false, null);
+      if (result !== false) {
+        content.normalize();
+        saveSelectionSnapshot(initialSelection);
+        refreshSavedSelection(content);
+        return true;
+      }
+    } catch (err) {
+      console.warn('execCommand("bold") failed, falling back to manual handling:', err);
+    }
+  }
+
+  const existing = findExactWrapper(range, content, (node) => node.tagName === 'STRONG');
+  if (existing) {
+    const firstChild = existing.firstChild;
+    const lastChild = existing.lastChild;
+    unwrapElement(existing);
+    content.normalize();
+    const removalSelection = window.getSelection();
+    if (removalSelection && firstChild && lastChild && firstChild.parentNode && lastChild.parentNode) {
+      const newRange = document.createRange();
+      newRange.setStartBefore(firstChild);
+      newRange.setEndAfter(lastChild);
+      removalSelection.removeAllRanges();
+      removalSelection.addRange(newRange);
+    }
+    return true;
+  }
+  
+  const fragment = range.extractContents();
+  const wrapper = document.createElement('strong');
+  wrapper.appendChild(fragment);
+  range.insertNode(wrapper);
+  
+  const insertionSelection = window.getSelection();
+  if (insertionSelection) {
+    const newRange = document.createRange();
+    newRange.selectNodeContents(wrapper);
+    insertionSelection.removeAllRanges();
+    insertionSelection.addRange(newRange);
+  }
+  content.normalize();
+  
+  return true;
+}
+
+function clearColorElement(element) {
+  if (!element) return;
+  element.removeAttribute('data-text-color');
+  element.removeAttribute('style');
+  unwrapElement(element);
+}
+
+function clearColorRange(content, range) {
+  if (!range) return;
+  const spans = Array.from(content.querySelectorAll('span[data-text-color]'));
+  spans.forEach(span => {
+    if (typeof range.intersectsNode === 'function') {
+      if (range.intersectsNode(span)) {
+        clearColorElement(span);
+      }
+      return;
+    }
+    const spanRange = document.createRange();
+    spanRange.selectNodeContents(span);
+    if (range.compareBoundaryPoints(Range.END_TO_START, spanRange) >= 0 &&
+        range.compareBoundaryPoints(Range.START_TO_END, spanRange) <= 0) {
+      clearColorElement(span);
+    }
+  });
+  content.normalize();
+}
+
+function applyColorToSelection(content, colorId) {
+  const range = getSelectionRangeWithinContent(content);
+  if (!range) return false;
+  
+  if (colorId === 'default') {
+    clearColorRange(content, range);
+    const selection = window.getSelection();
+    if (selection) {
+      selection.removeAllRanges();
+      selection.addRange(range);
+    }
+    content.normalize();
+    return true;
+  }
+  
+  const hex = TEXT_COLOR_MAP[colorId];
+  if (!hex) {
+    return false;
+  }
+  
+  const existing = findExactWrapper(range, content, (node) => {
+    return node.tagName === 'SPAN' && node.dataset.textColor === colorId;
+  });
+  if (existing) {
+    clearColorElement(existing);
+    content.normalize();
+    return true;
+  }
+  
+  clearColorRange(content, range);
+  
+  const fragment = range.extractContents();
+  const span = document.createElement('span');
+  span.setAttribute('data-text-color', colorId);
+  span.style.color = hex;
+  span.appendChild(fragment);
+  range.insertNode(span);
+  
+  const selection = window.getSelection();
+  if (selection) {
+    const newRange = document.createRange();
+    newRange.selectNodeContents(span);
+    selection.removeAllRanges();
+    selection.addRange(newRange);
+  }
+  content.normalize();
+  
+  return true;
+}
+
+function commitFormattingChange(content, item, options = {}) {
+  const selection = window.getSelection();
+  let shouldRestoreSelection = false;
+  if (options.keepSelection && selection && selection.rangeCount > 0) {
+    const range = selection.getRangeAt(0);
+    if (content.contains(range.commonAncestorContainer)) {
+      saveSelectionSnapshot(selection);
+      shouldRestoreSelection = true;
+    }
+  }
+
+  const sanitizedContent = sanitizeHtml(content.innerHTML);
+  if (content.innerHTML !== sanitizedContent) {
+    content.innerHTML = sanitizedContent;
+  }
+
+  if (shouldRestoreSelection) {
+    restoreSelectionForContent(content);
+  }
+
+  if ((item.text || '') === sanitizedContent) {
+    content.focus();
+    if (shouldRestoreSelection) {
+      restoreSelectionForContent(content);
+    }
+    refreshSavedSelection(content);
+    return;
+  }
+  const updatePayload = { text: sanitizedContent };
+  if (options.skipAutoLink) {
+    updatePayload.skipAutoLink = true;
+  }
+  updateItem(item.id, updatePayload, undefined, { skipReload: true });
+  item.text = sanitizedContent;
+  content.focus();
+  if (shouldRestoreSelection) {
+    restoreSelectionForContent(content);
+  }
+  refreshSavedSelection(content);
+}
+
 // Load from SQLite3 via API
 function loadItems(callback) {
   fetch('api.php?action=list', {cache: 'no-store'})
@@ -95,7 +464,9 @@ function createItem(type = 'text', text = '', afterId = null, callback, options 
     return;
   }
   
-  const params = new URLSearchParams({text, type});
+  const preparedText = prepareTextForStorage(text);
+  
+  const params = new URLSearchParams({text: preparedText, type});
   if (afterId) params.append('after_id', afterId);
   if (options.allowEmpty) params.append('allow_empty', '1');
 
@@ -125,9 +496,15 @@ function createItem(type = 'text', text = '', afterId = null, callback, options 
 }
 
 // Update item via API
-function updateItem(id, updates, callback) {
+function updateItem(id, updates, callback, options = {}) {
   const item = items.find(i => i.id === id);
   if (!item) return;
+
+  const skipAutoLink = updates && updates.skipAutoLink === true;
+  if (updates && 'skipAutoLink' in updates) {
+    delete updates.skipAutoLink;
+  }
+  const shouldSkipReload = options && options.skipReload;
   
   // Handle checked state separately
   if (updates.checked !== undefined && Object.keys(updates).length === 1) {
@@ -148,9 +525,11 @@ function updateItem(id, updates, callback) {
   
   // Handle text or type updates via edit endpoint
   const params = new URLSearchParams({id: id.toString()});
+  let preparedText;
   
   if (updates.text !== undefined) {
-    params.append('text', updates.text);
+    preparedText = skipAutoLink ? updates.text : prepareTextForStorage(updates.text);
+    params.append('text', preparedText);
   } else if (item.text) {
     params.append('text', item.text);
   }
@@ -164,7 +543,25 @@ function updateItem(id, updates, callback) {
     headers: {'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8'},
     body: params
   })
-  .then(() => loadItems(callback))
+  .then(() => {
+    if (shouldSkipReload) {
+      if (preparedText !== undefined) {
+        item.text = preparedText;
+      }
+      if (updates.type !== undefined) {
+        item.type = updates.type;
+      }
+      if (typeof callback === 'function') {
+        callback();
+      }
+    } else {
+      loadItems(() => {
+        if (typeof callback === 'function') {
+          callback();
+        }
+      });
+    }
+  })
   .catch(err => console.error('Failed to update item:', err));
 }
 
@@ -223,55 +620,231 @@ function reorderItems(callback) {
 // Context menu state
 let contextMenu = null;
 let savedSelection = null;
+let colorMenu = null;
+let colorMenuContext = null;
 
-// Handle context menu for hyperlinks
-function handleContextMenu(e, content, item) {
-  const selection = window.getSelection();
-  const selectedText = selection.toString().trim();
+function closeColorMenu() {
+  if (colorMenu) {
+    colorMenu.remove();
+    colorMenu = null;
+    colorMenuContext = null;
+  }
+  document.removeEventListener('click', handleColorMenuOutside, true);
+}
+
+function handleColorMenuOutside(event) {
+  if (!colorMenu) return;
+  if (colorMenu.contains(event.target)) return;
+  closeColorMenu();
+}
+
+function openColorMenu(position, content, item) {
+  closeColorMenu();
   
-  // Only show context menu if text is selected
-  if (!selectedText) {
+  if (!restoreSelectionForContent(content)) {
+    return;
+  }
+  
+  colorMenu = document.createElement('div');
+  colorMenu.className = 'context-color-menu';
+  colorMenuContext = { content, item };
+  
+  TEXT_COLOR_OPTIONS.forEach(option => {
+    const optionElement = document.createElement('div');
+    optionElement.className = 'context-color-option';
+    optionElement.setAttribute('data-color-id', option.id);
+    
+    const swatch = document.createElement('span');
+    swatch.className = 'context-color-swatch';
+    if (option.color) {
+      swatch.style.backgroundColor = option.color;
+    } else {
+      swatch.classList.add('context-color-swatch-default');
+    }
+    
+    const label = document.createElement('span');
+    label.className = 'context-color-label';
+    label.textContent = option.label;
+    
+    optionElement.appendChild(swatch);
+    optionElement.appendChild(label);
+    
+    optionElement.addEventListener('click', () => {
+      applyColorChoice(option.id);
+    });
+    
+    colorMenu.appendChild(optionElement);
+  });
+  
+  document.body.appendChild(colorMenu);
+  
+  const menuRect = colorMenu.getBoundingClientRect();
+  const viewportWidth = window.innerWidth;
+  const viewportHeight = window.innerHeight;
+  const scrollX = window.pageXOffset || window.scrollX || 0;
+  const scrollY = window.pageYOffset || window.scrollY || 0;
+  let left = position.x;
+  let top = position.y;
+  
+  if (left + menuRect.width > scrollX + viewportWidth) {
+    left = Math.max(scrollX + 8, scrollX + viewportWidth - menuRect.width - 8);
+  }
+  if (top + menuRect.height > scrollY + viewportHeight) {
+    top = Math.max(scrollY + 8, scrollY + viewportHeight - menuRect.height - 8);
+  }
+  
+  colorMenu.style.left = `${left}px`;
+  colorMenu.style.top = `${top}px`;
+  
+  setTimeout(() => document.addEventListener('click', handleColorMenuOutside, true), 0);
+}
+
+function applyColorChoice(colorId) {
+  if (!colorMenuContext) {
+    closeColorMenu();
+    return;
+  }
+  const { content, item } = colorMenuContext;
+  if (!restoreSelectionForContent(content)) {
+    closeColorMenu();
+    return;
+  }
+  if (applyColorToSelection(content, colorId)) {
+    commitFormattingChange(content, item);
+  }
+  closeColorMenu();
+}
+
+// Handle context menu for hyperlinks and formatting
+function handleContextMenu(e, content, item) {
+  closeColorMenu();
+  const selection = window.getSelection();
+  const selectedText = selection ? selection.toString().trim() : '';
+  const anchorTarget = findAnchorFromEventTarget(e.target);
+  const hasAnchorTarget = !!anchorTarget;
+  
+  if (!selectedText && !hasAnchorTarget) {
+    savedSelection = null;
     return;
   }
   
   e.preventDefault();
   
-  // Save the selection
-  savedSelection = {
-    range: selection.getRangeAt(0).cloneRange(),
-    text: selectedText
-  };
+  if (selectedText && selection && selection.rangeCount > 0) {
+    const range = selection.getRangeAt(0);
+    if (content.contains(range.commonAncestorContainer)) {
+      saveSelectionSnapshot(selection);
+    } else {
+      savedSelection = null;
+    }
+  } else {
+    savedSelection = null;
+  }
   
-  // Remove existing context menu if any
   if (contextMenu) {
     contextMenu.remove();
   }
+  contextMenu = null;
   
-  // Create context menu
+  const menuItems = [];
+  if (selectedText) {
+    menuItems.push({
+      label: '太字',
+      shortcut: 'Ctrl+B',
+      action: () => {
+        removeContextMenu();
+        if (!restoreSelectionForContent(content)) return;
+        if (toggleBoldSelection(content)) {
+          commitFormattingChange(content, item, { keepSelection: true });
+        }
+      }
+    });
+    menuItems.push({
+      label: '色を変更',
+      shortcut: 'Ctrl+Q',
+      action: () => {
+        const menuRect = contextMenu ? contextMenu.getBoundingClientRect() : null;
+        const scrollX = window.pageXOffset || window.scrollX || 0;
+        const scrollY = window.pageYOffset || window.scrollY || 0;
+        const position = menuRect
+          ? {
+              x: menuRect.right + scrollX + 8,
+              y: menuRect.top + scrollY
+            }
+          : { x: e.pageX + 8, y: e.pageY };
+        removeContextMenu();
+        if (!restoreSelectionForContent(content)) return;
+        openColorMenu(position, content, item);
+      }
+    });
+    menuItems.push({
+      label: 'ハイパーリンクを追加',
+      shortcut: 'Ctrl+K',
+      action: () => {
+        removeContextMenu();
+        if (!restoreSelectionForContent(content)) return;
+        promptForHyperlink(content, item);
+      }
+    });
+  }
+  if (hasAnchorTarget) {
+    menuItems.push({
+      label: 'ハイパーリンクを削除',
+      action: () => {
+        removeContextMenu();
+        removeHyperlink(anchorTarget, content, item);
+      }
+    });
+  }
+  
+  if (menuItems.length === 0) {
+    contextMenu = null;
+    return;
+  }
+  
   contextMenu = document.createElement('div');
   contextMenu.className = 'hyperlink-context-menu';
-  contextMenu.innerHTML = '<div class="context-menu-item">ハイパーリンクを追加</div>';
   
-  // Position the menu
-  contextMenu.style.left = e.pageX + 'px';
-  contextMenu.style.top = e.pageY + 'px';
-  
-  // Add click handler
-  const menuItem = contextMenu.querySelector('.context-menu-item');
-  menuItem.addEventListener('click', () => {
-    contextMenu.remove();
-    contextMenu = null;
-    promptForHyperlink(content, item);
+  menuItems.forEach(({label, shortcut, action}) => {
+    const menuItem = document.createElement('div');
+    menuItem.className = 'context-menu-item';
+    
+    const labelSpan = document.createElement('span');
+    labelSpan.className = 'context-menu-item-label';
+    labelSpan.textContent = label;
+    menuItem.appendChild(labelSpan);
+    
+    if (shortcut) {
+      const shortcutSpan = document.createElement('span');
+      shortcutSpan.className = 'context-menu-shortcut';
+      shortcutSpan.textContent = shortcut;
+      menuItem.appendChild(shortcutSpan);
+    }
+    
+    menuItem.addEventListener('click', () => {
+      action();
+    });
+    contextMenu.appendChild(menuItem);
   });
+  
+  contextMenu.style.left = `${e.pageX}px`;
+  contextMenu.style.top = `${e.pageY}px`;
   
   document.body.appendChild(contextMenu);
   
-  // Close menu when clicking elsewhere
-  const closeMenu = (event) => {
-    if (contextMenu && !contextMenu.contains(event.target)) {
+  function removeContextMenu() {
+    if (contextMenu) {
       contextMenu.remove();
       contextMenu = null;
-      document.removeEventListener('click', closeMenu);
+    }
+    closeColorMenu();
+    document.removeEventListener('click', closeMenu);
+  }
+  
+  const closeMenu = (event) => {
+    if (contextMenu && !contextMenu.contains(event.target)) {
+      removeContextMenu();
+      closeColorMenu();
     }
   };
   setTimeout(() => document.addEventListener('click', closeMenu), 0);
@@ -279,8 +852,15 @@ function handleContextMenu(e, content, item) {
 
 // Validate URL to prevent XSS attacks
 function isValidUrl(url) {
+  if (!url) return false;
+  
+  const trimmed = url.trim();
+  if (isLocalFilePath(trimmed)) {
+    return true;
+  }
+  
   try {
-    const parsed = new URL(url);
+    const parsed = new URL(trimmed);
     // Only allow http and https protocols
     return parsed.protocol === 'http:' || parsed.protocol === 'https:';
   } catch {
@@ -288,42 +868,702 @@ function isValidUrl(url) {
   }
 }
 
+function isLocalFilePath(url) {
+  if (!url) return false;
+  const trimmed = url.trim();
+  const withoutProtocol = trimmed.replace(/^https?:\/\//i, '');
+  return /^[a-zA-Z]:[\\/]/.test(withoutProtocol) || /^\\\\/.test(withoutProtocol);
+}
+
+function extractLocalFilePath(url) {
+  if (!url) return '';
+  if (!isLocalFilePath(url)) return '';
+  const trimmed = url.trim();
+  return trimmed.replace(/^https?:\/\//i, '');
+}
+
+function decorateAnchor(anchor, originalHref) {
+  if (!anchor || !originalHref) return;
+  
+  const trimmedHref = originalHref.trim();
+  anchor.setAttribute('data-original-href', trimmedHref);
+  
+  if (isLocalFilePath(trimmedHref)) {
+    const localPath = extractLocalFilePath(trimmedHref);
+    anchor.setAttribute('data-link-type', 'local-file');
+    if (localPath) {
+      anchor.setAttribute('data-local-path', localPath);
+    } else {
+      anchor.removeAttribute('data-local-path');
+    }
+    anchor.removeAttribute('target');
+    anchor.removeAttribute('rel');
+  } else {
+    anchor.setAttribute('data-link-type', 'web');
+    anchor.removeAttribute('data-local-path');
+    anchor.target = '_blank';
+    anchor.rel = 'noopener noreferrer';
+  }
+}
+
+async function copyPathToClipboard(path) {
+  if (!path) return false;
+  
+  if (navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
+    try {
+      await navigator.clipboard.writeText(path);
+      return true;
+    } catch (err) {
+      console.error('Standard clipboard write failed, falling back:', err);
+    }
+  }
+  
+  return fallbackCopyToClipboard(path);
+}
+
+function fallbackCopyToClipboard(text) {
+  const textarea = document.createElement('textarea');
+  textarea.value = text;
+  textarea.setAttribute('readonly', '');
+  textarea.style.position = 'fixed';
+  textarea.style.top = '-9999px';
+  textarea.style.opacity = '0';
+  document.body.appendChild(textarea);
+  textarea.select();
+  textarea.setSelectionRange(0, textarea.value.length);
+  
+  let copied = false;
+  try {
+    copied = document.execCommand('copy');
+  } catch (err) {
+    console.error('Fallback clipboard copy failed:', err);
+    copied = false;
+  } finally {
+    document.body.removeChild(textarea);
+  }
+  
+  return copied;
+}
+
+function isTextNodeWithinAnchor(node) {
+  if (!node) return false;
+  const parent = node.parentElement;
+  if (!parent) return false;
+  return parent.closest('a') !== null;
+}
+
+function splitLinkTextAndTrailingPunctuation(text) {
+  if (!text) return { linkText: text, trailing: '' };
+  let linkText = text;
+  let trailing = '';
+  while (linkText.length > 0 && /[).,;!?]$/.test(linkText)) {
+    trailing = linkText.slice(-1) + trailing;
+    linkText = linkText.slice(0, -1);
+  }
+  if (linkText.length === 0) {
+    return { linkText: text, trailing: '' };
+  }
+  return { linkText, trailing };
+}
+
+function autoLinkContent(root) {
+  if (!root || (root.dataset && root.dataset.disableAutoLink === 'true')) return;
+  
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, null);
+  const textNodes = [];
+  let current;
+  while ((current = walker.nextNode()) !== null) {
+    if (!current.nodeValue || !current.nodeValue.trim()) continue;
+    if (isTextNodeWithinAnchor(current)) continue;
+    textNodes.push(current);
+  }
+  
+  textNodes.forEach(node => {
+    const text = node.nodeValue;
+    LINK_DETECTION_REGEX.lastIndex = 0;
+    let match;
+    let lastIndex = 0;
+    let hasMatch = false;
+    const fragment = document.createDocumentFragment();
+    
+    while ((match = LINK_DETECTION_REGEX.exec(text)) !== null) {
+      const matchedText = match[0];
+      const matchIndex = match.index;
+      
+      if (matchIndex > lastIndex) {
+        fragment.appendChild(document.createTextNode(text.slice(lastIndex, matchIndex)));
+      }
+      
+      const { linkText, trailing } = splitLinkTextAndTrailingPunctuation(matchedText);
+      if (!linkText) {
+        fragment.appendChild(document.createTextNode(matchedText));
+        lastIndex = matchIndex + matchedText.length;
+        continue;
+      }
+      
+      if (!isValidUrl(linkText)) {
+        fragment.appendChild(document.createTextNode(matchedText));
+        lastIndex = matchIndex + matchedText.length;
+        continue;
+      }
+      
+      const anchor = document.createElement('a');
+      anchor.textContent = linkText;
+      anchor.setAttribute('href', linkText);
+      decorateAnchor(anchor, linkText);
+      fragment.appendChild(anchor);
+      
+      if (trailing) {
+        fragment.appendChild(document.createTextNode(trailing));
+      }
+      
+      lastIndex = matchIndex + matchedText.length;
+      hasMatch = true;
+    }
+    
+    if (!hasMatch) return;
+    
+    if (lastIndex < text.length) {
+      fragment.appendChild(document.createTextNode(text.slice(lastIndex)));
+    }
+    
+    node.replaceWith(fragment);
+  });
+}
+
+function linkifyPlainText(text) {
+  if (!text) return text;
+  if (!LINK_DETECTION_REGEX.test(text)) {
+    LINK_DETECTION_REGEX.lastIndex = 0;
+    return text;
+  }
+  LINK_DETECTION_REGEX.lastIndex = 0;
+  const temp = document.createElement('div');
+  temp.textContent = text;
+  autoLinkContent(temp);
+  return sanitizeHtml(temp.innerHTML);
+}
+
+function prepareTextForStorage(text) {
+  if (typeof text !== 'string' || text === '') {
+    return typeof text === 'string' ? text : '';
+  }
+  if (text.includes('<')) {
+    return text;
+  }
+  return linkifyPlainText(text);
+}
+
+async function openWebLink(url) {
+  if (!url) return;
+  try {
+    const params = new URLSearchParams({ url });
+    const response = await fetch('api.php?action=open_link', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8' },
+      body: params
+    });
+    if (!response.ok) {
+      throw new Error(`Network response was not ok (status ${response.status})`);
+    }
+    const data = await response.json().catch(() => ({}));
+    if (!data.success) {
+      throw new Error(data.error || 'open_link_failed');
+    }
+  } catch (err) {
+    console.error('Failed to open link via OS default browser, falling back to window.open:', err);
+    window.open(url, '_blank', 'noopener,noreferrer');
+  }
+}
+
+let toastContainer = null;
+let toastStylesInjected = false;
+
+function injectToastStyles() {
+  if (toastStylesInjected) return;
+  const style = document.createElement('style');
+  style.textContent = `
+.toast-container {
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  z-index: 9999;
+}
+.toast {
+  min-width: clamp(160px, calc(100vw - 48px), 240px);
+  max-width: clamp(160px, calc(100vw - 48px), 360px);
+  padding: 12px 16px;
+  background: rgba(34, 34, 34, 0.9);
+  color: #fff;
+  font-size: 12px;
+  border-radius: 6px;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.2);
+  opacity: 0;
+  transform: translateY(10px);
+  transition: opacity 150ms ease, transform 150ms ease;
+  word-break: break-all;
+  overflow-wrap: anywhere;
+}
+.toast.toast-error {
+  background: rgba(220, 38, 38, 0.9);
+}
+.toast.visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+`;
+  document.head.appendChild(style);
+  toastStylesInjected = true;
+}
+
+function showToast(message, type = 'info', duration = 3000) {
+  if (!toastContainer) {
+    toastContainer = document.createElement('div');
+    toastContainer.className = 'toast-container';
+    document.body.appendChild(toastContainer);
+  }
+  
+  injectToastStyles();
+  
+  const toast = document.createElement('div');
+  toast.className = `toast toast-${type}`;
+  toast.textContent = message;
+  toastContainer.appendChild(toast);
+  
+  requestAnimationFrame(() => {
+    toast.classList.add('visible');
+  });
+  
+  setTimeout(() => {
+    toast.classList.remove('visible');
+    setTimeout(() => {
+      toast.remove();
+      if (toastContainer && toastContainer.childElementCount === 0) {
+        toastContainer.remove();
+        toastContainer = null;
+      }
+    }, 200);
+  }, duration);
+}
+
+let linkTooltip = null;
+let linkTooltipStylesInjected = false;
+let currentTooltipAnchor = null;
+
+function getAnchorOriginalHref(anchor) {
+  if (!anchor) return '';
+  return anchor.getAttribute('data-original-href') || anchor.getAttribute('href') || '';
+}
+
+function injectLinkTooltipStyles() {
+  if (linkTooltipStylesInjected) return;
+  const style = document.createElement('style');
+  style.textContent = `
+.link-tooltip {
+  position: fixed;
+  padding: 4px 8px;
+  background: rgba(34, 34, 34, 0.9);
+  color: #fff;
+  font-size: 12px;
+  border-radius: 4px;
+  pointer-events: none;
+  z-index: 9999;
+  opacity: 0;
+  transition: opacity 120ms ease;
+  max-width: 360px;
+  word-break: break-all;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.18);
+}
+.link-tooltip.visible {
+  opacity: 1;
+}
+`;
+  document.head.appendChild(style);
+  linkTooltipStylesInjected = true;
+}
+
+function ensureLinkTooltip() {
+  if (linkTooltip) return linkTooltip;
+  injectLinkTooltipStyles();
+  linkTooltip = document.createElement('div');
+  linkTooltip.className = 'link-tooltip';
+  document.body.appendChild(linkTooltip);
+  return linkTooltip;
+}
+
+function showLinkTooltipForAnchor(anchor) {
+  if (!anchor) return;
+  const tooltip = ensureLinkTooltip();
+  const originalHref = getAnchorOriginalHref(anchor).trim();
+  if (!originalHref) {
+    hideLinkTooltip();
+    return;
+  }
+  
+  const displayHref = isLocalFilePath(originalHref)
+    ? (anchor.getAttribute('data-local-path') || extractLocalFilePath(originalHref))
+    : originalHref;
+  
+  if (!displayHref) {
+    hideLinkTooltip();
+    return;
+  }
+  
+  currentTooltipAnchor = anchor;
+  tooltip.classList.remove('visible');
+  tooltip.textContent = displayHref;
+  
+  // Measure tooltip to position it within viewport
+  tooltip.style.left = '0px';
+  tooltip.style.top = '0px';
+  const rect = anchor.getBoundingClientRect();
+  const tooltipRect = tooltip.getBoundingClientRect();
+  const margin = 8;
+  const viewportWidth = window.innerWidth || document.documentElement.clientWidth;
+  
+  let left = rect.left + window.scrollX;
+  if (left + tooltipRect.width + margin > window.scrollX + viewportWidth) {
+    left = window.scrollX + viewportWidth - tooltipRect.width - margin;
+  }
+  if (left < window.scrollX + margin) {
+    left = window.scrollX + margin;
+  }
+  const top = rect.bottom + window.scrollY + margin;
+  
+  tooltip.style.left = `${Math.max(left, margin)}px`;
+  tooltip.style.top = `${top}px`;
+  
+  requestAnimationFrame(() => {
+    if (currentTooltipAnchor === anchor) {
+      tooltip.classList.add('visible');
+    }
+  });
+}
+
+function hideLinkTooltip() {
+  currentTooltipAnchor = null;
+  if (linkTooltip) {
+    linkTooltip.classList.remove('visible');
+  }
+}
+
+function findAnchorFromEventTarget(target) {
+  if (!target) return null;
+  if (target.nodeType === Node.TEXT_NODE) {
+    target = target.parentElement;
+  }
+  return target ? target.closest('a') : null;
+}
+
+window.addEventListener('scroll', hideLinkTooltip, true);
+window.addEventListener('blur', hideLinkTooltip);
+
+let hyperlinkDialogElements = null;
+let hyperlinkDialogStylesInjected = false;
+let hyperlinkDialogState = null;
+let hyperlinkDialogPreviousActiveElement = null;
+
+function injectHyperlinkDialogStyles() {
+  if (hyperlinkDialogStylesInjected) return;
+  const style = document.createElement('style');
+  style.textContent = `
+.hyperlink-dialog-overlay {
+  position: fixed;
+  inset: 0;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  background: rgba(0, 0, 0, 0.35);
+  z-index: 10001;
+  overflow: auto;
+}
+.hyperlink-dialog-overlay.visible {
+  display: flex;
+}
+.hyperlink-dialog {
+  width: min(400px, calc(100vw - 32px));
+  max-height: calc(100vh - 32px);
+  overflow-y: auto;
+  background: #fff;
+  color: #222;
+  border-radius: 8px;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.2);
+  padding: 20px;
+  font-size: 14px;
+}
+.hyperlink-dialog-form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.hyperlink-dialog-label {
+  font-size: 14px;
+  font-weight: 600;
+}
+.hyperlink-dialog-input {
+  width: 100%;
+  padding: 10px;
+  font-size: 14px;
+  border: 1px solid #ccc;
+  border-radius: 6px;
+}
+.hyperlink-dialog-input::placeholder {
+  font-size: 12px;
+}
+.hyperlink-dialog-input:focus {
+  border-color: #4aa3ff;
+  outline: none;
+  box-shadow: 0 0 0 2px rgba(74, 163, 255, 0.2);
+}
+.hyperlink-dialog-error {
+  min-height: 16px;
+  font-size: 12px;
+  color: #dc2626;
+}
+.hyperlink-dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+.hyperlink-dialog-actions button {
+  min-width: 72px;
+  padding: 6px 12px;
+  font-size: 13px;
+  border-radius: 4px;
+  border: none;
+  cursor: pointer;
+}
+.hyperlink-dialog-cancel {
+  background: #f2f2f2;
+  color: #333;
+}
+.hyperlink-dialog-cancel:hover {
+  background: #e5e5e5;
+}
+.hyperlink-dialog-submit {
+  background: #4aa3ff;
+  color: #fff;
+}
+.hyperlink-dialog-submit:hover {
+  background: #2589f5;
+}
+`;
+  document.head.appendChild(style);
+  hyperlinkDialogStylesInjected = true;
+}
+
+function ensureHyperlinkDialog() {
+  if (hyperlinkDialogElements) return hyperlinkDialogElements;
+  injectHyperlinkDialogStyles();
+  
+  const overlay = document.createElement('div');
+  overlay.className = 'hyperlink-dialog-overlay';
+  overlay.setAttribute('aria-hidden', 'true');
+  overlay.innerHTML = `
+    <div class="hyperlink-dialog" role="dialog" aria-modal="true" aria-label="リンク先の入力">
+      <form class="hyperlink-dialog-form">
+        <label class="hyperlink-dialog-label" for="hyperlink-dialog-input">リンク先</label>
+        <input id="hyperlink-dialog-input" class="hyperlink-dialog-input" type="text" autocomplete="off" spellcheck="false" />
+        <div class="hyperlink-dialog-error" aria-live="polite"></div>
+        <div class="hyperlink-dialog-actions">
+          <button type="button" class="hyperlink-dialog-cancel">キャンセル</button>
+          <button type="submit" class="hyperlink-dialog-submit">追加</button>
+        </div>
+      </form>
+    </div>
+  `;
+  
+  document.body.appendChild(overlay);
+  
+  const dialog = overlay.querySelector('.hyperlink-dialog');
+  const form = overlay.querySelector('.hyperlink-dialog-form');
+  const input = overlay.querySelector('.hyperlink-dialog-input');
+  const error = overlay.querySelector('.hyperlink-dialog-error');
+  const cancelButton = overlay.querySelector('.hyperlink-dialog-cancel');
+  
+  form.addEventListener('submit', (event) => {
+    event.preventDefault();
+    if (!hyperlinkDialogState || typeof hyperlinkDialogState.onSubmit !== 'function') {
+      closeHyperlinkDialog('submit');
+      return;
+    }
+    
+    const value = input.value || '';
+    const helpers = {
+      setError: (message) => {
+        error.textContent = message || '';
+      },
+      close: () => closeHyperlinkDialog('submit')
+    };
+    
+    try {
+      const result = hyperlinkDialogState.onSubmit(value, helpers);
+      if (result && typeof result.then === 'function') {
+        result.then((shouldClose) => {
+          if (shouldClose !== false) {
+            closeHyperlinkDialog('submit');
+          }
+        }).catch(err => {
+          console.error('Hyperlink dialog submit failed:', err);
+        });
+      } else if (result !== false) {
+        closeHyperlinkDialog('submit');
+      }
+    } catch (err) {
+      console.error('Hyperlink dialog submit threw an error:', err);
+      closeHyperlinkDialog('submit');
+    }
+  });
+  
+  cancelButton.addEventListener('click', () => {
+    if (hyperlinkDialogState && typeof hyperlinkDialogState.onCancel === 'function') {
+      hyperlinkDialogState.onCancel();
+    }
+    closeHyperlinkDialog('cancel');
+  });
+  
+  overlay.addEventListener('click', (event) => {
+    if (event.target === overlay) {
+      if (hyperlinkDialogState && typeof hyperlinkDialogState.onCancel === 'function') {
+        hyperlinkDialogState.onCancel();
+      }
+      closeHyperlinkDialog('cancel');
+    }
+  });
+  
+  overlay.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      if (hyperlinkDialogState && typeof hyperlinkDialogState.onCancel === 'function') {
+        hyperlinkDialogState.onCancel();
+      }
+      closeHyperlinkDialog('cancel');
+    }
+  });
+  
+  hyperlinkDialogElements = { overlay, dialog, form, input, error, cancelButton };
+  return hyperlinkDialogElements;
+}
+
+function openHyperlinkDialog(options = {}) {
+  const elements = ensureHyperlinkDialog();
+  const { overlay, input, error } = elements;
+  
+  hyperlinkDialogState = {
+    onSubmit: typeof options.onSubmit === 'function' ? options.onSubmit : null,
+    onCancel: typeof options.onCancel === 'function' ? options.onCancel : null
+  };
+  
+  hyperlinkDialogPreviousActiveElement = document.activeElement instanceof HTMLElement
+    ? document.activeElement
+    : null;
+  
+  const placeholder = options.placeholder || '例: https://example.com または C:\\path\\file.txt';
+  input.setAttribute('placeholder', placeholder);
+  input.value = options.defaultValue || '';
+  error.textContent = '';
+  
+  overlay.classList.add('visible');
+  overlay.setAttribute('aria-hidden', 'false');
+  
+  requestAnimationFrame(() => {
+    input.focus();
+    input.select();
+  });
+}
+
+function closeHyperlinkDialog() {
+  if (!hyperlinkDialogElements) return;
+  const { overlay, error, input } = hyperlinkDialogElements;
+  
+  overlay.classList.remove('visible');
+  overlay.setAttribute('aria-hidden', 'true');
+  error.textContent = '';
+  input.value = '';
+  
+  hyperlinkDialogState = null;
+  
+  if (hyperlinkDialogPreviousActiveElement && typeof hyperlinkDialogPreviousActiveElement.focus === 'function') {
+    hyperlinkDialogPreviousActiveElement.focus();
+  }
+  hyperlinkDialogPreviousActiveElement = null;
+}
+
 // Sanitize HTML to only allow anchor tags with safe attributes
 function sanitizeHtml(html) {
   const temp = document.createElement('div');
   temp.innerHTML = html;
   
-  // Get all anchor tags
   const anchors = temp.querySelectorAll('a');
-  
-  // Validate and sanitize each anchor
   anchors.forEach(anchor => {
-    const href = anchor.getAttribute('href');
+    const existingOriginalHref = anchor.getAttribute('data-original-href');
+    const href = existingOriginalHref || anchor.getAttribute('href') || '';
     if (!href || !isValidUrl(href)) {
-      // Remove invalid anchor, keep text content
       anchor.replaceWith(document.createTextNode(anchor.textContent));
     } else {
-      // Keep only safe attributes
-      const safeAnchor = document.createElement('a');
-      safeAnchor.href = href;
-      safeAnchor.textContent = anchor.textContent;
-      safeAnchor.target = '_blank';
-      safeAnchor.rel = 'noopener noreferrer';
-      anchor.replaceWith(safeAnchor);
+      const trimmed = href.trim();
+      Array.from(anchor.getAttributeNames()).forEach(attr => {
+        if (!['href', 'data-original-href', 'data-link-type', 'data-local-path', 'target', 'rel'].includes(attr)) {
+          anchor.removeAttribute(attr);
+        }
+      });
+      anchor.setAttribute('href', trimmed);
+      decorateAnchor(anchor, trimmed);
     }
   });
   
-  // Remove all other tags except text and anchors
+  const boldElements = temp.querySelectorAll('b, strong');
+  boldElements.forEach(el => {
+    let target = el;
+    if (el.tagName === 'B') {
+      const strong = document.createElement('strong');
+      while (el.firstChild) {
+        strong.appendChild(el.firstChild);
+      }
+      el.replaceWith(strong);
+      target = strong;
+    }
+    Array.from(target.attributes).forEach(attr => target.removeAttribute(attr.name));
+  });
+  
+  const spanElements = Array.from(temp.querySelectorAll('span'));
+  spanElements.forEach(span => {
+    const colorId = span.getAttribute('data-text-color');
+    if (colorId && TEXT_COLOR_MAP[colorId]) {
+      const hex = TEXT_COLOR_MAP[colorId];
+      Array.from(span.getAttributeNames()).forEach(attr => {
+        if (attr !== 'data-text-color' && attr !== 'style') {
+          span.removeAttribute(attr);
+        }
+      });
+      span.setAttribute('data-text-color', colorId);
+      span.style.color = hex;
+    } else {
+      span.removeAttribute('data-text-color');
+      span.removeAttribute('style');
+      unwrapElement(span);
+    }
+  });
+  
   const walker = document.createTreeWalker(temp, NodeFilter.SHOW_ELEMENT);
-  const nodesToReplace = [];
+  const nodesToClean = [];
   let node;
   while ((node = walker.nextNode()) !== null) {
-    if (node.tagName !== 'A') {
-      nodesToReplace.push(node);
-    }
+    const tag = node.tagName;
+    if (tag === 'A' || tag === 'STRONG') continue;
+    if (tag === 'SPAN' && node.getAttribute('data-text-color')) continue;
+    nodesToClean.push(node);
   }
-  nodesToReplace.forEach(node => {
-    node.replaceWith(document.createTextNode(node.textContent));
+  nodesToClean.forEach(node => {
+    if (node.tagName === 'SPAN' || node.tagName === 'STRONG') {
+      unwrapElement(node);
+    } else {
+      node.replaceWith(document.createTextNode(node.textContent));
+    }
   });
   
   return temp.innerHTML;
@@ -332,19 +1572,26 @@ function sanitizeHtml(html) {
 // Prompt for hyperlink URL
 function promptForHyperlink(content, item) {
   if (!savedSelection) return;
-  
-  const url = prompt('リンク先URLを入力してください:', 'https://');
-  
-  if (url && url.trim()) {
-    const trimmedUrl = url.trim();
-    if (isValidUrl(trimmedUrl)) {
+  openHyperlinkDialog({
+    placeholder: '例: https://example.com または C:\\path\\file.txt',
+    onSubmit: (value, helpers) => {
+      const trimmedUrl = (value || '').trim();
+      if (!trimmedUrl) {
+        helpers.setError('リンク先を入力してください。');
+        return false;
+      }
+      if (!isValidUrl(trimmedUrl)) {
+        helpers.setError('有効なURL（http(s)のWebリンク、またはローカルパス）を入力してください。');
+        return false;
+      }
       insertHyperlink(content, item, trimmedUrl);
-    } else {
-      alert('有効なURL（http://またはhttps://）を入力してください。');
+      savedSelection = null;
+      return true;
+    },
+    onCancel: () => {
+      savedSelection = null;
     }
-  }
-  
-  savedSelection = null;
+  });
 }
 
 // Insert hyperlink into content
@@ -366,10 +1613,9 @@ function insertHyperlink(content, item, url) {
     
     // Create anchor element
     const anchor = document.createElement('a');
-    anchor.href = url;
     anchor.textContent = savedSelection.text;
-    anchor.target = '_blank';
-    anchor.rel = 'noopener noreferrer';
+    anchor.setAttribute('href', url);
+    decorateAnchor(anchor, url);
     
     // Replace selected text with anchor
     savedSelection.range.deleteContents();
@@ -383,11 +1629,37 @@ function insertHyperlink(content, item, url) {
     
     // Sanitize and update the item text with the new HTML content
     const sanitizedContent = sanitizeHtml(content.innerHTML);
-    updateItem(item.id, { text: sanitizedContent });
+    updateItem(item.id, { text: sanitizedContent }, undefined, { skipReload: true });
+    item.text = sanitizedContent;
   } catch (err) {
     console.error('Failed to insert hyperlink:', err);
     alert('ハイパーリンクの追加に失敗しました。もう一度お試しください。');
   }
+}
+
+function removeHyperlink(anchor, content, item) {
+  if (!anchor || !content) return;
+  
+  const textNode = document.createTextNode(anchor.textContent);
+  anchor.replaceWith(textNode);
+  
+  const selection = window.getSelection();
+  if (selection) {
+    const newRange = document.createRange();
+    newRange.selectNodeContents(textNode);
+    newRange.collapse(false);
+    selection.removeAllRanges();
+    selection.addRange(newRange);
+  }
+  
+  if (content.dataset) {
+    content.dataset.disableAutoLink = 'true';
+  }
+  
+  const sanitizedContent = sanitizeHtml(content.innerHTML);
+  updateItem(item.id, { text: sanitizedContent, skipAutoLink: true }, undefined, { skipReload: true });
+  content.focus();
+  savedSelection = null;
 }
 
 // Render all items
@@ -521,6 +1793,9 @@ function setupContentHandlers(content, item, li) {
   });
   
   content.addEventListener('input', () => {
+    if (content.dataset && content.dataset.disableAutoLink) {
+      delete content.dataset.disableAutoLink;
+    }
     const text = content.textContent;
     if (text) {
       content.removeAttribute('data-placeholder');
@@ -551,15 +1826,45 @@ function setupContentHandlers(content, item, li) {
   });
   
   // Handle clicks on hyperlinks
-  content.addEventListener('click', (e) => {
-    if (e.target.tagName === 'A') {
-      e.preventDefault();
-      const url = e.target.href;
-      // Validate URL protocol before opening (defense-in-depth)
-      if (url && isValidUrl(url)) {
-        window.open(url, '_blank', 'noopener,noreferrer');
+  content.addEventListener('click', async (e) => {
+    const anchor = findAnchorFromEventTarget(e.target);
+    if (!anchor) return;
+    
+    e.preventDefault();
+    hideLinkTooltip();
+    
+    const originalHref = getAnchorOriginalHref(anchor);
+    const isLocal = isLocalFilePath(originalHref);
+    
+    if (isLocal) {
+      const localPath = anchor.getAttribute('data-local-path') || extractLocalFilePath(originalHref);
+      const copied = await copyPathToClipboard(localPath);
+      hideLinkTooltip();
+      if (copied) {
+        showToast(`${localPath} をクリップボードにコピーしました`, 'info', 3500);
+      } else {
+        showToast('パスのコピーに失敗しました。', 'error', 3500);
       }
+      return;
     }
+    
+    // Validate URL protocol before opening (defense-in-depth)
+    if (originalHref && isValidUrl(originalHref)) {
+      await openWebLink(originalHref);
+    }
+  });
+  
+  content.addEventListener('mousemove', (e) => {
+    const anchor = findAnchorFromEventTarget(e.target);
+    if (anchor) {
+      showLinkTooltipForAnchor(anchor);
+    } else {
+      hideLinkTooltip();
+    }
+  });
+  
+  content.addEventListener('mouseleave', () => {
+    hideLinkTooltip();
   });
 }
 
@@ -607,6 +1912,42 @@ function handleSlashCommand(text, item, li, content) {
 
 // Handle keydown events
 function handleKeyDown(e, content, item, li) {
+  const isModifier = (e.ctrlKey || e.metaKey) && !e.altKey;
+  if (isModifier && !e.shiftKey) {
+    const key = e.key.toLowerCase();
+    if (key === 'b') {
+      e.preventDefault();
+      closeColorMenu();
+      if (toggleBoldSelection(content)) {
+        commitFormattingChange(content, item, { keepSelection: true });
+      }
+      return;
+    }
+    if (key === 'q') {
+      e.preventDefault();
+      const range = getSelectionRangeWithinContent(content);
+      if (!range) return;
+      saveSelectionSnapshot(window.getSelection());
+      const rect = range.getBoundingClientRect();
+      const scrollX = window.pageXOffset || window.scrollX || 0;
+      const scrollY = window.pageYOffset || window.scrollY || 0;
+      const position = {
+        x: rect.right + scrollX + 8,
+        y: rect.top + scrollY
+      };
+      openColorMenu(position, content, item);
+      return;
+    }
+    if (key === 'k') {
+      e.preventDefault();
+      closeColorMenu();
+      const range = getSelectionRangeWithinContent(content);
+      if (!range) return;
+      saveSelectionSnapshot(window.getSelection());
+      promptForHyperlink(content, item);
+      return;
+    }
+  }
   if (e.key === 'Enter' && !e.shiftKey) {
     e.preventDefault();
     handleEnter(item, li, content);
@@ -746,14 +2087,31 @@ function handleEnter(item, li, content) {
 
 // Handle content blur
 function handleContentBlur(content, item, li) {
-  // Check if content has hyperlinks
-  const hasHyperlinks = content.querySelector('a') !== null;
-  const newContent = hasHyperlinks ? sanitizeHtml(content.innerHTML) : content.textContent.trim();
+  const autoLinkDisabled = content.dataset && content.dataset.disableAutoLink === 'true';
   
-  // Compare with existing content
+  if (!autoLinkDisabled) {
+    autoLinkContent(content);
+  }
+  
+  const sanitizedContent = sanitizeHtml(content.innerHTML);
+  
+  if (content.innerHTML !== sanitizedContent) {
+    content.innerHTML = sanitizedContent;
+  }
+  
+  if (sanitizedContent) {
+    content.removeAttribute('data-placeholder');
+  } else {
+    content.setAttribute('data-placeholder', getPlaceholder());
+  }
+  
   const oldContent = item.text || '';
-  if (newContent !== oldContent) {
-    updateItem(item.id, { text: newContent });
+  if (sanitizedContent !== oldContent) {
+    updateItem(item.id, { text: sanitizedContent, skipAutoLink: autoLinkDisabled });
+  }
+  
+  if (autoLinkDisabled) {
+    delete content.dataset.disableAutoLink;
   }
 }
 
