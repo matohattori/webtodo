@@ -87,10 +87,10 @@ function performRedo() {
 
 const LINK_DETECTION_REGEX = /(?:https?:\/\/[^\s<>"']+|[A-Za-z]:[\\/][^\s<>"']+|\\\\[^\s<>"']+)/gi;
 const TEXT_COLOR_OPTIONS = [
-  { id: 'default', label: '標準', color: '' },
-  { id: 'red', label: '赤', color: '#FF0000' },
-  { id: 'blue', label: '青', color: '#3300FF' },
-  { id: 'orange', label: '緑', color: '#006600' }
+  { id: 'default', label: '標準', color: '', shortcut: 'S' },
+  { id: 'red', label: '赤', color: '#FF0000', shortcut: 'R' },
+  { id: 'blue', label: '青', color: '#3300FF', shortcut: 'B' },
+  { id: 'orange', label: '緑', color: '#006600', shortcut: 'G' }
 ];
 
 const TEXT_COLOR_MAP = TEXT_COLOR_OPTIONS.reduce((acc, option) => {
@@ -866,20 +866,78 @@ let contextMenu = null;
 let savedSelection = null;
 let colorMenu = null;
 let colorMenuContext = null;
+let selectedColorIndex = 0;
 
 function closeColorMenu() {
   if (colorMenu) {
     colorMenu.remove();
     colorMenu = null;
     colorMenuContext = null;
+    selectedColorIndex = 0;
   }
   document.removeEventListener('click', handleColorMenuOutside, true);
+  document.removeEventListener('keydown', handleColorMenuKeydown);
 }
 
 function handleColorMenuOutside(event) {
   if (!colorMenu) return;
   if (colorMenu.contains(event.target)) return;
   closeColorMenu();
+}
+
+function updateColorMenuSelection() {
+  if (!colorMenu) return;
+  const options = colorMenu.querySelectorAll('.context-color-option');
+  options.forEach((opt, index) => {
+    if (index === selectedColorIndex) {
+      opt.classList.add('selected');
+    } else {
+      opt.classList.remove('selected');
+    }
+  });
+}
+
+function handleColorMenuKeydown(event) {
+  if (!colorMenu) return;
+  
+  const key = event.key.toLowerCase();
+  
+  // Handle arrow keys for navigation
+  if (key === 'arrowdown' || key === 'arrowup') {
+    event.preventDefault();
+    if (key === 'arrowdown') {
+      selectedColorIndex = (selectedColorIndex + 1) % TEXT_COLOR_OPTIONS.length;
+    } else {
+      selectedColorIndex = (selectedColorIndex - 1 + TEXT_COLOR_OPTIONS.length) % TEXT_COLOR_OPTIONS.length;
+    }
+    updateColorMenuSelection();
+    return;
+  }
+  
+  // Handle Enter to apply selected color
+  if (key === 'enter') {
+    event.preventDefault();
+    const option = TEXT_COLOR_OPTIONS[selectedColorIndex];
+    if (option) {
+      applyColorChoice(option.id);
+    }
+    return;
+  }
+  
+  // Handle Escape to close menu
+  if (key === 'escape') {
+    event.preventDefault();
+    closeColorMenu();
+    return;
+  }
+  
+  // Handle shortcut keys
+  const shortcutOption = TEXT_COLOR_OPTIONS.find(opt => opt.shortcut.toLowerCase() === key);
+  if (shortcutOption) {
+    event.preventDefault();
+    applyColorChoice(shortcutOption.id);
+    return;
+  }
 }
 
 function openColorMenu(position, content, item) {
@@ -891,12 +949,15 @@ function openColorMenu(position, content, item) {
   
   colorMenu = document.createElement('div');
   colorMenu.className = 'context-color-menu';
+  colorMenu.setAttribute('tabindex', '-1');
   colorMenuContext = { content, item };
+  selectedColorIndex = 0;
   
-  TEXT_COLOR_OPTIONS.forEach(option => {
+  TEXT_COLOR_OPTIONS.forEach((option, index) => {
     const optionElement = document.createElement('div');
     optionElement.className = 'context-color-option';
     optionElement.setAttribute('data-color-id', option.id);
+    optionElement.setAttribute('data-index', index);
     
     const swatch = document.createElement('span');
     swatch.className = 'context-color-swatch';
@@ -910,8 +971,13 @@ function openColorMenu(position, content, item) {
     label.className = 'context-color-label';
     label.textContent = option.label;
     
+    const shortcut = document.createElement('span');
+    shortcut.className = 'context-color-shortcut';
+    shortcut.textContent = option.shortcut;
+    
     optionElement.appendChild(swatch);
     optionElement.appendChild(label);
+    optionElement.appendChild(shortcut);
     
     optionElement.addEventListener('click', () => {
       applyColorChoice(option.id);
@@ -940,7 +1006,16 @@ function openColorMenu(position, content, item) {
   colorMenu.style.left = `${left}px`;
   colorMenu.style.top = `${top}px`;
   
+  // Set initial selection highlight
+  updateColorMenuSelection();
+  
+  // Add keyboard event listener
+  document.addEventListener('keydown', handleColorMenuKeydown);
+  
   setTimeout(() => document.addEventListener('click', handleColorMenuOutside, true), 0);
+  
+  // Focus the menu to receive keyboard events
+  colorMenu.focus();
 }
 
 function applyColorChoice(colorId) {
