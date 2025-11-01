@@ -10,13 +10,8 @@ const LINK_DETECTION_REGEX = /(?:https?:\/\/[^\s<>"']+|[A-Za-z]:[\\/][^\s<>"']+|
 const TEXT_COLOR_OPTIONS = [
   { id: 'default', label: '標準', color: '' },
   { id: 'red', label: '赤', color: '#FF0000' },
-  { id: 'orange', label: 'オレンジ', color: '#FFA500' },
-  { id: 'yellow', label: '黄', color: '#FFD700' },
-  { id: 'green', label: '緑', color: '#008000' },
-  { id: 'blue', label: '青', color: '#0000FF' },
-  { id: 'purple', label: '紫', color: '#800080' },
-  { id: 'pink', label: 'ピンク', color: '#FF1493' },
-  { id: 'gray', label: 'グレー', color: '#808080' }
+  { id: 'blue', label: '青', color: '#3300FF' },
+  { id: 'orange', label: '緑', color: '#006600' }
 ];
 
 const TEXT_COLOR_MAP = TEXT_COLOR_OPTIONS.reduce((acc, option) => {
@@ -143,6 +138,22 @@ function resolveSelectionContext(range, contextHint) {
   return null;
 }
 
+function captureSelection(selection, contextHint) {
+  if (!selection || selection.rangeCount === 0) {
+    return null;
+  }
+  const range = selection.getRangeAt(0);
+  const context = resolveSelectionContext(range, contextHint);
+  const offsets = context ? getRangeOffsetsWithin(context, range) : { start: null, end: null };
+  return {
+    range: range.cloneRange(),
+    text: selection.toString(),
+    context,
+    start: offsets.start,
+    end: offsets.end
+  };
+}
+
 function unwrapElement(element) {
   if (!element || !element.parentNode) return;
   const parent = element.parentNode;
@@ -153,21 +164,9 @@ function unwrapElement(element) {
 }
 
 function saveSelectionSnapshot(selection, contextHint) {
-  if (!selection || selection.rangeCount === 0) {
-    savedSelection = null;
-    return;
-  }
-  const range = selection.getRangeAt(0);
-  const context = resolveSelectionContext(range, contextHint);
-  const offsets = context ? getRangeOffsetsWithin(context, range) : { start: null, end: null };
-  
-  savedSelection = {
-    range: range.cloneRange(),
-    text: selection.toString(),
-    context,
-    start: offsets.start,
-    end: offsets.end
-  };
+  const snapshot = captureSelection(selection, contextHint);
+  savedSelection = snapshot;
+  return snapshot;
 }
 
 function restoreSelectionForContent(content) {
@@ -261,65 +260,144 @@ function findExactWrapper(range, content, predicate) {
 }
 
 function toggleBoldSelection(content) {
-  const range = getSelectionRangeWithinContent(content);
-  if (!range) return false;
-  const initialSelection = window.getSelection();
-  if (initialSelection && typeof document.execCommand === 'function') {
-    try {
-      const result = document.execCommand('bold', false, null);
-      if (result !== false) {
-        content.normalize();
-        saveSelectionSnapshot(initialSelection);
-        refreshSavedSelection(content);
-        return true;
-      }
-    } catch (err) {
-      console.warn('execCommand("bold") failed, falling back to manual handling:', err);
-    }
+  const selection = window.getSelection();
+  if (!selection || selection.rangeCount === 0) return false;
+
+  const range = selection.getRangeAt(0);
+  if (!content.contains(range.commonAncestorContainer) || range.collapsed) {
+    return false;
   }
 
-  const existing = findExactWrapper(range, content, (node) => node.tagName === 'STRONG');
-  if (existing) {
-    // Save selection offsets before unwrapping
-    const offsets = getRangeOffsetsWithin(content, range);
-    unwrapElement(existing);
-    content.normalize();
-    
-    // Restore selection using saved offsets
-    const removalSelection = window.getSelection();
-    if (removalSelection && typeof offsets.start === 'number' && typeof offsets.end === 'number') {
-      const startPoint = resolveOffsetToRangePoint(content, offsets.start);
-      const endPoint = resolveOffsetToRangePoint(content, offsets.end);
-      if (startPoint && endPoint && startPoint.node && endPoint.node) {
-        try {
-          const newRange = document.createRange();
-          newRange.setStart(startPoint.node, startPoint.offset);
-          newRange.setEnd(endPoint.node, endPoint.offset);
-          removalSelection.removeAllRanges();
-          removalSelection.addRange(newRange);
-        } catch (err) {
-          console.warn('Failed to restore selection after unbold:', err);
-        }
+  const offsets = getRangeOffsetsWithin(content, range);
+  const startOffset = offsets.start;
+  const endOffset = offsets.end;
+
+  if (typeof startOffset !== 'number' || typeof endOffset !== 'number') {
+    return false;
+  }
+
+  const analysis = analyzeBoldFragment(range.cloneContents());
+  if (!analysis.hasText) {
+    return false;
+  }
+
+  const extracted = range.extractContents();
+  let insertedNodes = [];
+
+  stripBoldTagsFromFragment(extracted);
+
+  if (!analysis.allBold) {
+    const wrapper = document.createElement('strong');
+    while (extracted.firstChild) {
+      wrapper.appendChild(extracted.firstChild);
+    }
+    if (wrapper.firstChild) {
+      range.insertNode(wrapper);
+      insertedNodes = [wrapper];
+    }
+  } else {
+    const nodesToInsert = Array.from(extracted.childNodes);
+    if (nodesToInsert.length === 0) {
+      const placeholder = document.createTextNode('');
+      extracted.appendChild(placeholder);
+      nodesToInsert.push(placeholder);
+    }
+    range.insertNode(extracted);
+    insertedNodes = nodesToInsert.filter(node => node.parentNode);
+    liftNodesOutOfBold(insertedNodes);
+  }
+
+  content.normalize();
+
+  const startPoint = resolveOffsetToRangePoint(content, startOffset);
+  const endPoint = resolveOffsetToRangePoint(content, endOffset);
+  if (!startPoint || !endPoint || !startPoint.node || !endPoint.node) {
+    return false;
+  }
+
+  try {
+    const newRange = document.createRange();
+    newRange.setStart(startPoint.node, startPoint.offset);
+    newRange.setEnd(endPoint.node, endPoint.offset);
+    selection.removeAllRanges();
+    selection.addRange(newRange);
+    saveSelectionSnapshot(selection, content);
+    return true;
+  } catch (err) {
+    console.warn('選択範囲の復元に失敗:', err);
+    return false;
+  }
+}
+
+function analyzeBoldFragment(fragment) {
+  let hasText = false;
+  let allBold = true;
+  const walker = document.createTreeWalker(fragment, NodeFilter.SHOW_TEXT, null);
+  while (walker.nextNode()) {
+    const textNode = walker.currentNode;
+    if (!textNode) continue;
+    const text = textNode.textContent || '';
+    if (text.trim().length === 0) {
+      continue;
+    }
+    hasText = true;
+    if (!isTextNodeWithinBold(textNode)) {
+      allBold = false;
+    }
+  }
+  return { hasText, allBold };
+}
+
+function isTextNodeWithinBold(node) {
+  let current = node.parentNode;
+  while (current) {
+    if (current.nodeType === Node.ELEMENT_NODE) {
+      const tag = current.tagName;
+      if (tag === 'STRONG' || tag === 'B') {
+        return true;
       }
     }
-    return true;
+    current = current.parentNode;
   }
-  
-  const fragment = range.extractContents();
-  const wrapper = document.createElement('strong');
-  wrapper.appendChild(fragment);
-  range.insertNode(wrapper);
-  
-  const insertionSelection = window.getSelection();
-  if (insertionSelection) {
-    const newRange = document.createRange();
-    newRange.selectNodeContents(wrapper);
-    insertionSelection.removeAllRanges();
-    insertionSelection.addRange(newRange);
+  return false;
+}
+
+function stripBoldTagsFromFragment(fragment) {
+  if (!fragment || typeof fragment.querySelectorAll !== 'function') return;
+  const boldNodes = Array.from(fragment.querySelectorAll('strong, b'));
+  boldNodes.forEach(node => unwrapElement(node));
+}
+
+function isBoldElement(node) {
+  return node && node.nodeType === Node.ELEMENT_NODE && (node.tagName === 'STRONG' || node.tagName === 'B');
+}
+
+function liftNodesOutOfBold(nodes) {
+  nodes.forEach(node => liftNodeOutOfBold(node));
+}
+
+function liftNodeOutOfBold(node) {
+  let current = node;
+  while (current && current.parentNode && isBoldElement(current.parentNode)) {
+    const boldParent = current.parentNode;
+    const grandParent = boldParent.parentNode;
+    if (!grandParent) break;
+
+    const afterClone = boldParent.cloneNode(false);
+    while (current.nextSibling) {
+      afterClone.appendChild(current.nextSibling);
+    }
+
+    const referenceNode = boldParent.nextSibling;
+    grandParent.insertBefore(current, referenceNode);
+    if (afterClone.firstChild) {
+      grandParent.insertBefore(afterClone, referenceNode);
+    }
+
+    if (!boldParent.firstChild) {
+      boldParent.remove();
+    }
   }
-  content.normalize();
-  
-  return true;
 }
 
 function clearColorElement(element) {
@@ -409,30 +487,28 @@ function applyColorToSelection(content, colorId) {
 
 function commitFormattingChange(content, item, options = {}) {
   const selection = window.getSelection();
-  let shouldRestoreSelection = false;
-  if (options.keepSelection && selection && selection.rangeCount > 0) {
-    const range = selection.getRangeAt(0);
-    if (content.contains(range.commonAncestorContainer)) {
-      saveSelectionSnapshot(selection);
-      shouldRestoreSelection = true;
-    }
-  }
+  const selectionSnapshot = (options.keepSelection && selection && selection.rangeCount > 0 && content.contains(selection.getRangeAt(0).commonAncestorContainer))
+    ? captureSelection(selection, content)
+    : null;
 
+  sanitizeContentInPlace(content);
   const sanitizedContent = sanitizeHtml(content.innerHTML);
-  if (content.innerHTML !== sanitizedContent) {
-    content.innerHTML = sanitizedContent;
+
+  if (selectionSnapshot) {
+    savedSelection = selectionSnapshot;
   }
 
-  if (shouldRestoreSelection) {
-    restoreSelectionForContent(content);
-  }
+  const restoreSelectionAsync = () => {
+    if (selectionSnapshot) {
+      savedSelection = selectionSnapshot;
+      restoreSelectionForContent(content);
+      refreshSavedSelection(content);
+    }
+  };
 
   if ((item.text || '') === sanitizedContent) {
     content.focus();
-    if (shouldRestoreSelection) {
-      restoreSelectionForContent(content);
-    }
-    refreshSavedSelection(content);
+    requestAnimationFrame(restoreSelectionAsync);
     return;
   }
   const updatePayload = { text: sanitizedContent };
@@ -442,10 +518,7 @@ function commitFormattingChange(content, item, options = {}) {
   updateItem(item.id, updatePayload, undefined, { skipReload: true });
   item.text = sanitizedContent;
   content.focus();
-  if (shouldRestoreSelection) {
-    restoreSelectionForContent(content);
-  }
-  refreshSavedSelection(content);
+  requestAnimationFrame(restoreSelectionAsync);
 }
 
 // Load from SQLite3 via API
@@ -751,7 +824,7 @@ function handleContextMenu(e, content, item) {
   if (selectedText && selection && selection.rangeCount > 0) {
     const range = selection.getRangeAt(0);
     if (content.contains(range.commonAncestorContainer)) {
-      saveSelectionSnapshot(selection);
+      saveSelectionSnapshot(selection, content);
     } else {
       savedSelection = null;
     }
@@ -1512,6 +1585,77 @@ function closeHyperlinkDialog() {
 }
 
 // Sanitize HTML to only allow anchor tags with safe attributes
+function sanitizeContentInPlace(root) {
+  if (!root) return '';
+
+  // Normalize bold elements
+  const boldElements = Array.from(root.querySelectorAll('b, strong'));
+  boldElements.forEach(el => {
+    let target = el;
+    if (el.tagName === 'B') {
+      const strong = document.createElement('strong');
+      while (el.firstChild) {
+        strong.appendChild(el.firstChild);
+      }
+      el.replaceWith(strong);
+      target = strong;
+    }
+    Array.from(target.attributes).forEach(attr => target.removeAttribute(attr.name));
+  });
+
+  // Sanitize anchors
+  const anchors = Array.from(root.querySelectorAll('a'));
+  anchors.forEach(anchor => {
+    const original = anchor.getAttribute('data-original-href') || anchor.getAttribute('href') || '';
+    if (!original || !isValidUrl(original)) {
+      anchor.replaceWith(document.createTextNode(anchor.textContent));
+    } else {
+      decorateAnchor(anchor, original);
+    }
+  });
+
+  // Sanitize color spans
+  const spanNodes = Array.from(root.querySelectorAll('span'));
+  spanNodes.forEach(span => {
+    const colorId = span.getAttribute('data-text-color');
+    if (colorId && TEXT_COLOR_MAP[colorId]) {
+      Array.from(span.attributes).forEach(attr => {
+        if (attr.name !== 'data-text-color' && attr.name !== 'style') {
+          span.removeAttribute(attr.name);
+        }
+      });
+      span.style.color = TEXT_COLOR_MAP[colorId];
+    } else {
+      span.removeAttribute('data-text-color');
+      span.removeAttribute('style');
+      unwrapElement(span);
+    }
+  });
+
+  // Remove other disallowed elements
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_ELEMENT, null);
+  const toClean = [];
+  let node;
+  while ((node = walker.nextNode()) !== null) {
+    if (node === root) continue;
+    const tag = node.tagName;
+    const allowSpan = tag === 'SPAN' && node.getAttribute('data-text-color');
+    if (tag === 'A' || tag === 'STRONG' || allowSpan) {
+      continue;
+    }
+    toClean.push(node);
+  }
+  toClean.forEach(node => {
+    if (node.tagName === 'SPAN') {
+      unwrapElement(node);
+    } else {
+      node.replaceWith(document.createTextNode(node.textContent));
+    }
+  });
+
+  return root.innerHTML;
+}
+
 function sanitizeHtml(html) {
   const temp = document.createElement('div');
   temp.innerHTML = html;
@@ -1945,7 +2089,7 @@ function handleKeyDown(e, content, item, li) {
       e.preventDefault();
       const range = getSelectionRangeWithinContent(content);
       if (!range) return;
-      saveSelectionSnapshot(window.getSelection());
+      saveSelectionSnapshot(window.getSelection(), content);
       const rect = range.getBoundingClientRect();
       const scrollX = window.pageXOffset || window.scrollX || 0;
       const scrollY = window.pageYOffset || window.scrollY || 0;
@@ -1961,7 +2105,7 @@ function handleKeyDown(e, content, item, li) {
       closeColorMenu();
       const range = getSelectionRangeWithinContent(content);
       if (!range) return;
-      saveSelectionSnapshot(window.getSelection());
+      saveSelectionSnapshot(window.getSelection(), content);
       promptForHyperlink(content, item);
       return;
     }
@@ -2110,12 +2254,9 @@ function handleContentBlur(content, item, li) {
   if (!autoLinkDisabled) {
     autoLinkContent(content);
   }
-  
+
+  sanitizeContentInPlace(content);
   const sanitizedContent = sanitizeHtml(content.innerHTML);
-  
-  if (content.innerHTML !== sanitizedContent) {
-    content.innerHTML = sanitizedContent;
-  }
   
   if (sanitizedContent) {
     content.removeAttribute('data-placeholder');
