@@ -950,6 +950,8 @@ function openColorMenu(position, content, item) {
   colorMenu = document.createElement('div');
   colorMenu.className = 'context-color-menu';
   colorMenu.setAttribute('tabindex', '-1');
+  colorMenu.setAttribute('role', 'menu');
+  colorMenu.setAttribute('aria-label', '色を変更');
   colorMenuContext = { content, item };
   selectedColorIndex = 0;
   
@@ -958,6 +960,8 @@ function openColorMenu(position, content, item) {
     optionElement.className = 'context-color-option';
     optionElement.setAttribute('data-color-id', option.id);
     optionElement.setAttribute('data-index', index);
+    optionElement.setAttribute('role', 'menuitem');
+    optionElement.setAttribute('aria-label', `${option.label} (${option.shortcut})`);
     
     const swatch = document.createElement('span');
     swatch.className = 'context-color-swatch';
