@@ -9,14 +9,14 @@ const list = document.getElementById('todoList');
 const LINK_DETECTION_REGEX = /(?:https?:\/\/[^\s<>"']+|[A-Za-z]:[\\/][^\s<>"']+|\\\\[^\s<>"']+)/gi;
 const TEXT_COLOR_OPTIONS = [
   { id: 'default', label: '標準', color: '' },
-  { id: 'red', label: '赤', color: '#DC2626' },
-  { id: 'orange', label: 'オレンジ', color: '#D97706' },
-  { id: 'yellow', label: '黄', color: '#CA8A04' },
-  { id: 'green', label: '緑', color: '#16A34A' },
-  { id: 'blue', label: '青', color: '#2563EB' },
-  { id: 'purple', label: '紫', color: '#7C3AED' },
-  { id: 'pink', label: 'ピンク', color: '#DB2777' },
-  { id: 'gray', label: 'グレー', color: '#4B5563' }
+  { id: 'red', label: '赤', color: '#FF0000' },
+  { id: 'orange', label: 'オレンジ', color: '#FF8000' },
+  { id: 'yellow', label: '黄', color: '#FFFF00' },
+  { id: 'green', label: '緑', color: '#00FF00' },
+  { id: 'blue', label: '青', color: '#0000FF' },
+  { id: 'purple', label: '紫', color: '#800080' },
+  { id: 'pink', label: 'ピンク', color: '#FF00FF' },
+  { id: 'gray', label: 'グレー', color: '#808080' }
 ];
 
 const TEXT_COLOR_MAP = TEXT_COLOR_OPTIONS.reduce((acc, option) => {
@@ -280,17 +280,27 @@ function toggleBoldSelection(content) {
 
   const existing = findExactWrapper(range, content, (node) => node.tagName === 'STRONG');
   if (existing) {
-    const firstChild = existing.firstChild;
-    const lastChild = existing.lastChild;
+    // Save selection offsets before unwrapping
+    const offsets = getRangeOffsetsWithin(content, range);
     unwrapElement(existing);
     content.normalize();
+    
+    // Restore selection using saved offsets
     const removalSelection = window.getSelection();
-    if (removalSelection && firstChild && lastChild && firstChild.parentNode && lastChild.parentNode) {
-      const newRange = document.createRange();
-      newRange.setStartBefore(firstChild);
-      newRange.setEndAfter(lastChild);
-      removalSelection.removeAllRanges();
-      removalSelection.addRange(newRange);
+    if (removalSelection && typeof offsets.start === 'number' && typeof offsets.end === 'number') {
+      const startPoint = resolveOffsetToRangePoint(content, offsets.start);
+      const endPoint = resolveOffsetToRangePoint(content, offsets.end);
+      if (startPoint && endPoint && startPoint.node && endPoint.node) {
+        try {
+          const newRange = document.createRange();
+          newRange.setStart(startPoint.node, startPoint.offset);
+          newRange.setEnd(endPoint.node, endPoint.offset);
+          removalSelection.removeAllRanges();
+          removalSelection.addRange(newRange);
+        } catch (err) {
+          console.warn('Failed to restore selection after unbold:', err);
+        }
+      }
     }
     return true;
   }
@@ -359,30 +369,38 @@ function applyColorToSelection(content, colorId) {
     return false;
   }
   
-  const existing = findExactWrapper(range, content, (node) => {
-    return node.tagName === 'SPAN' && node.dataset.textColor === colorId;
-  });
-  if (existing) {
-    clearColorElement(existing);
-    content.normalize();
-    return true;
+  // Save range offsets before clearing to reconstruct range after clearing
+  const offsets = getRangeOffsetsWithin(content, range);
+  
+  // Always clear existing colors before applying new color
+  // This allows changing from one color to another
+  clearColorRange(content, range);
+  content.normalize();
+  
+  // Reconstruct range using saved offsets
+  const startPoint = resolveOffsetToRangePoint(content, offsets.start);
+  const endPoint = resolveOffsetToRangePoint(content, offsets.end);
+  if (!startPoint || !endPoint || !startPoint.node || !endPoint.node) {
+    return false;
   }
   
-  clearColorRange(content, range);
+  const newRange = document.createRange();
+  newRange.setStart(startPoint.node, startPoint.offset);
+  newRange.setEnd(endPoint.node, endPoint.offset);
   
-  const fragment = range.extractContents();
+  const fragment = newRange.extractContents();
   const span = document.createElement('span');
   span.setAttribute('data-text-color', colorId);
   span.style.color = hex;
   span.appendChild(fragment);
-  range.insertNode(span);
+  newRange.insertNode(span);
   
   const selection = window.getSelection();
   if (selection) {
-    const newRange = document.createRange();
-    newRange.selectNodeContents(span);
+    const finalRange = document.createRange();
+    finalRange.selectNodeContents(span);
     selection.removeAllRanges();
-    selection.addRange(newRange);
+    selection.addRange(finalRange);
   }
   content.normalize();
   
