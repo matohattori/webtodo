@@ -2298,11 +2298,9 @@ function handleKeyDown(e, content, item, li) {
     // Get cursor position once
     const caret = getCaretOffset(content);
     if (e.shiftKey) {
-      // Shift+Up at end: select entire item
-      if (caret === content.textContent.length) {
-        selectEntireContent(content);
-        return;
-      }
+      // Shift+Up: select from cursor to beginning
+      selectFromCursorToStart(content);
+      return;
     }
     // Preserve cursor position when moving up
     focusPreviousItem(item.id, { offset: caret });
@@ -2311,11 +2309,9 @@ function handleKeyDown(e, content, item, li) {
     // Get cursor position once
     const caret = getCaretOffset(content);
     if (e.shiftKey) {
-      // Shift+Down at start: select entire item
-      if (caret === 0) {
-        selectEntireContent(content);
-        return;
-      }
+      // Shift+Down: select from cursor to end
+      selectFromCursorToEnd(content);
+      return;
     }
     // Preserve cursor position when moving down
     focusNextItem(item.id, { offset: caret });
@@ -2521,6 +2517,40 @@ function selectEntireContent(content) {
   const sel = window.getSelection();
   const range = document.createRange();
   range.selectNodeContents(content);
+  sel.removeAllRanges();
+  sel.addRange(range);
+}
+
+// Select from cursor position to start of content
+function selectFromCursorToStart(content) {
+  if (!content) return;
+  const sel = window.getSelection();
+  if (!sel || sel.rangeCount === 0) return;
+  
+  const currentRange = sel.getRangeAt(0);
+  if (!content.contains(currentRange.startContainer)) return;
+  
+  const range = document.createRange();
+  range.setStart(content, 0);
+  range.setEnd(currentRange.startContainer, currentRange.startOffset);
+  
+  sel.removeAllRanges();
+  sel.addRange(range);
+}
+
+// Select from cursor position to end of content
+function selectFromCursorToEnd(content) {
+  if (!content) return;
+  const sel = window.getSelection();
+  if (!sel || sel.rangeCount === 0) return;
+  
+  const currentRange = sel.getRangeAt(0);
+  if (!content.contains(currentRange.startContainer)) return;
+  
+  const range = document.createRange();
+  range.setStart(currentRange.startContainer, currentRange.startOffset);
+  range.setEndAfter(content.lastChild || content);
+  
   sel.removeAllRanges();
   sel.addRange(range);
 }
