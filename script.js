@@ -2295,29 +2295,29 @@ function handleKeyDown(e, content, item, li) {
     }
   } else if (e.key === 'ArrowUp') {
     e.preventDefault();
+    // Get cursor position once
+    const caret = getCaretOffset(content);
     if (e.shiftKey) {
       // Shift+Up at end: select entire item
-      const caret = getCaretOffset(content);
       if (caret === content.textContent.length) {
         selectEntireContent(content);
         return;
       }
     }
     // Preserve cursor position when moving up
-    const caret = getCaretOffset(content);
     focusPreviousItem(item.id, { offset: caret });
   } else if (e.key === 'ArrowDown') {
     e.preventDefault();
+    // Get cursor position once
+    const caret = getCaretOffset(content);
     if (e.shiftKey) {
       // Shift+Down at start: select entire item
-      const caret = getCaretOffset(content);
       if (caret === 0) {
         selectEntireContent(content);
         return;
       }
     }
     // Preserve cursor position when moving down
-    const caret = getCaretOffset(content);
     focusNextItem(item.id, { offset: caret });
   } else if (e.key === 'Backspace' && getCaretOffset(content) === 0) {
     e.preventDefault();
