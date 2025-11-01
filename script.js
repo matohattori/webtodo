@@ -2295,10 +2295,26 @@ function handleKeyDown(e, content, item, li) {
     }
   } else if (e.key === 'ArrowUp') {
     e.preventDefault();
-    focusPreviousItem(item.id);
+    // Get cursor position once
+    const caret = getCaretOffset(content);
+    if (e.shiftKey) {
+      // Shift+Up: select from cursor to beginning
+      selectFromCursorToStart(content);
+      return;
+    }
+    // Preserve cursor position when moving up
+    focusPreviousItem(item.id, { offset: caret });
   } else if (e.key === 'ArrowDown') {
     e.preventDefault();
-    focusNextItem(item.id);
+    // Get cursor position once
+    const caret = getCaretOffset(content);
+    if (e.shiftKey) {
+      // Shift+Down: select from cursor to end
+      selectFromCursorToEnd(content);
+      return;
+    }
+    // Preserve cursor position when moving down
+    focusNextItem(item.id, { offset: caret });
   } else if (e.key === 'Backspace' && getCaretOffset(content) === 0) {
     e.preventDefault();
     handleEmptyLineBackspace(item, content);
@@ -2495,9 +2511,54 @@ function addEmptyRow() {
   list.appendChild(li);
 }
 
+// Select entire content of an element
+function selectEntireContent(content) {
+  if (!content) return;
+  const sel = window.getSelection();
+  const range = document.createRange();
+  range.selectNodeContents(content);
+  sel.removeAllRanges();
+  sel.addRange(range);
+}
+
+// Select from cursor position to start of content
+function selectFromCursorToStart(content) {
+  if (!content) return;
+  const sel = window.getSelection();
+  if (!sel || sel.rangeCount === 0) return;
+  
+  const currentRange = sel.getRangeAt(0);
+  if (!content.contains(currentRange.startContainer)) return;
+  
+  const range = document.createRange();
+  range.setStart(content, 0);
+  range.setEnd(currentRange.startContainer, currentRange.startOffset);
+  
+  sel.removeAllRanges();
+  sel.addRange(range);
+}
+
+// Select from cursor position to end of content
+function selectFromCursorToEnd(content) {
+  if (!content) return;
+  const sel = window.getSelection();
+  if (!sel || sel.rangeCount === 0) return;
+  
+  const currentRange = sel.getRangeAt(0);
+  if (!content.contains(currentRange.startContainer)) return;
+  
+  const range = document.createRange();
+  range.setStart(currentRange.startContainer, currentRange.startOffset);
+  range.setEndAfter(content.lastChild || content);
+  
+  sel.removeAllRanges();
+  sel.addRange(range);
+}
+
 // Focus item by id
 function focusItem(id, options = {}) {
   const position = options.position || 'end';
+  const offset = options.offset;
   setTimeout(() => {
     const li = list.querySelector(`li[data-id="${id}"]`);
     if (li) {
@@ -2506,6 +2567,21 @@ function focusItem(id, options = {}) {
         content.focus();
         const range = document.createRange();
         const sel = window.getSelection();
+        
+        // If offset is specified, try to position cursor at that offset
+        if (typeof offset === 'number') {
+          const targetOffset = Math.min(offset, content.textContent.length);
+          const point = resolveOffsetToRangePoint(content, targetOffset);
+          if (point && point.node) {
+            range.setStart(point.node, point.offset);
+            range.collapse(true);
+            sel.removeAllRanges();
+            sel.addRange(range);
+            return;
+          }
+        }
+        
+        // Otherwise use position-based focusing
         if (position === 'start') {
           range.setStart(content, 0);
         } else if (content.childNodes.length > 0) {
