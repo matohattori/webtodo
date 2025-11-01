@@ -9,14 +9,14 @@ const list = document.getElementById('todoList');
 const LINK_DETECTION_REGEX = /(?:https?:\/\/[^\s<>"']+|[A-Za-z]:[\\/][^\s<>"']+|\\\\[^\s<>"']+)/gi;
 const TEXT_COLOR_OPTIONS = [
   { id: 'default', label: '標準', color: '' },
-  { id: 'red', label: '赤', color: '#DC2626' },
-  { id: 'orange', label: 'オレンジ', color: '#D97706' },
-  { id: 'yellow', label: '黄', color: '#CA8A04' },
-  { id: 'green', label: '緑', color: '#16A34A' },
-  { id: 'blue', label: '青', color: '#2563EB' },
-  { id: 'purple', label: '紫', color: '#7C3AED' },
-  { id: 'pink', label: 'ピンク', color: '#DB2777' },
-  { id: 'gray', label: 'グレー', color: '#4B5563' }
+  { id: 'red', label: '赤', color: '#FF4D4F' },
+  { id: 'orange', label: 'オレンジ', color: '#FFA940' },
+  { id: 'yellow', label: '黄', color: '#FFD666' },
+  { id: 'green', label: '緑', color: '#52C41A' },
+  { id: 'blue', label: '青', color: '#1890FF' },
+  { id: 'purple', label: '紫', color: '#722ED1' },
+  { id: 'pink', label: 'ピンク', color: '#FF85C0' },
+  { id: 'gray', label: 'グレー', color: '#8C8C8C' }
 ];
 
 const TEXT_COLOR_MAP = TEXT_COLOR_OPTIONS.reduce((acc, option) => {
@@ -102,7 +102,7 @@ function getRangeOffsetsWithin(container, range) {
 
 function resolveOffsetToRangePoint(container, targetOffset) {
   if (!container || targetOffset === null || targetOffset === undefined) return null;
-  
+
   const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT, null);
   let current = 0;
   let node = walker.nextNode();
@@ -115,11 +115,39 @@ function resolveOffsetToRangePoint(container, targetOffset) {
     current += length;
     node = walker.nextNode();
   }
-  
+
   if (container.lastChild && container.lastChild.nodeType === Node.TEXT_NODE) {
     return { node: container.lastChild, offset: container.lastChild.textContent.length };
   }
   return { node: container, offset: container.childNodes.length };
+}
+
+function setSelectionByOffsets(content, startOffset, endOffset) {
+  if (!content) return false;
+  const selection = window.getSelection();
+  if (!selection) return false;
+
+  const totalLength = content.textContent.length;
+  const safeStart = Math.max(0, Math.min(typeof startOffset === 'number' ? startOffset : 0, totalLength));
+  const safeEnd = Math.max(safeStart, Math.min(typeof endOffset === 'number' ? endOffset : safeStart, totalLength));
+
+  const startPoint = resolveOffsetToRangePoint(content, safeStart);
+  const endPoint = resolveOffsetToRangePoint(content, safeEnd);
+  if (!startPoint || !endPoint || !startPoint.node || !endPoint.node) {
+    return false;
+  }
+
+  try {
+    const range = document.createRange();
+    range.setStart(startPoint.node, startPoint.offset);
+    range.setEnd(endPoint.node, endPoint.offset);
+    selection.removeAllRanges();
+    selection.addRange(range);
+    return true;
+  } catch (err) {
+    console.warn('Failed to set selection by offsets:', err);
+    return false;
+  }
 }
 
 function resolveSelectionContext(range, contextHint) {
@@ -264,6 +292,7 @@ function toggleBoldSelection(content) {
   const range = getSelectionRangeWithinContent(content);
   if (!range) return false;
   const initialSelection = window.getSelection();
+  const offsets = getRangeOffsetsWithin(content, range);
   if (initialSelection && typeof document.execCommand === 'function') {
     try {
       const result = document.execCommand('bold', false, null);
@@ -280,21 +309,16 @@ function toggleBoldSelection(content) {
 
   const existing = findExactWrapper(range, content, (node) => node.tagName === 'STRONG');
   if (existing) {
-    const firstChild = existing.firstChild;
-    const lastChild = existing.lastChild;
+    const start = typeof offsets.start === 'number' ? offsets.start : null;
+    const end = typeof offsets.end === 'number' ? offsets.end : null;
     unwrapElement(existing);
     content.normalize();
-    const removalSelection = window.getSelection();
-    if (removalSelection && firstChild && lastChild && firstChild.parentNode && lastChild.parentNode) {
-      const newRange = document.createRange();
-      newRange.setStartBefore(firstChild);
-      newRange.setEndAfter(lastChild);
-      removalSelection.removeAllRanges();
-      removalSelection.addRange(newRange);
+    if (start !== null && end !== null) {
+      setSelectionByOffsets(content, start, end);
     }
     return true;
   }
-  
+
   const fragment = range.extractContents();
   const wrapper = document.createElement('strong');
   wrapper.appendChild(fragment);
@@ -342,7 +366,8 @@ function clearColorRange(content, range) {
 function applyColorToSelection(content, colorId) {
   const range = getSelectionRangeWithinContent(content);
   if (!range) return false;
-  
+  const offsets = getRangeOffsetsWithin(content, range);
+
   if (colorId === 'default') {
     clearColorRange(content, range);
     const selection = window.getSelection();
@@ -353,23 +378,28 @@ function applyColorToSelection(content, colorId) {
     content.normalize();
     return true;
   }
-  
+
   const hex = TEXT_COLOR_MAP[colorId];
   if (!hex) {
     return false;
   }
-  
-  const existing = findExactWrapper(range, content, (node) => {
-    return node.tagName === 'SPAN' && node.dataset.textColor === colorId;
+
+  const start = typeof offsets.start === 'number' ? offsets.start : null;
+  const end = typeof offsets.end === 'number' ? offsets.end : null;
+
+  const exactWrapper = findExactWrapper(range, content, (node) => {
+    return node.tagName === 'SPAN' && node.hasAttribute('data-text-color');
   });
-  if (existing) {
-    clearColorElement(existing);
-    content.normalize();
+
+  if (exactWrapper && start !== null && end !== null) {
+    exactWrapper.setAttribute('data-text-color', colorId);
+    exactWrapper.style.color = hex;
+    setSelectionByOffsets(content, start, end);
     return true;
   }
-  
+
   clearColorRange(content, range);
-  
+
   const fragment = range.extractContents();
   const span = document.createElement('span');
   span.setAttribute('data-text-color', colorId);
