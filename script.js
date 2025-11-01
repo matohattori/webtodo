@@ -2295,10 +2295,30 @@ function handleKeyDown(e, content, item, li) {
     }
   } else if (e.key === 'ArrowUp') {
     e.preventDefault();
-    focusPreviousItem(item.id);
+    if (e.shiftKey) {
+      // Shift+Up at end: select entire item
+      const caret = getCaretOffset(content);
+      if (caret === content.textContent.length) {
+        selectEntireContent(content);
+        return;
+      }
+    }
+    // Preserve cursor position when moving up
+    const caret = getCaretOffset(content);
+    focusPreviousItem(item.id, { offset: caret });
   } else if (e.key === 'ArrowDown') {
     e.preventDefault();
-    focusNextItem(item.id);
+    if (e.shiftKey) {
+      // Shift+Down at start: select entire item
+      const caret = getCaretOffset(content);
+      if (caret === 0) {
+        selectEntireContent(content);
+        return;
+      }
+    }
+    // Preserve cursor position when moving down
+    const caret = getCaretOffset(content);
+    focusNextItem(item.id, { offset: caret });
   } else if (e.key === 'Backspace' && getCaretOffset(content) === 0) {
     e.preventDefault();
     handleEmptyLineBackspace(item, content);
@@ -2495,9 +2515,20 @@ function addEmptyRow() {
   list.appendChild(li);
 }
 
+// Select entire content of an element
+function selectEntireContent(content) {
+  if (!content) return;
+  const sel = window.getSelection();
+  const range = document.createRange();
+  range.selectNodeContents(content);
+  sel.removeAllRanges();
+  sel.addRange(range);
+}
+
 // Focus item by id
 function focusItem(id, options = {}) {
   const position = options.position || 'end';
+  const offset = options.offset;
   setTimeout(() => {
     const li = list.querySelector(`li[data-id="${id}"]`);
     if (li) {
@@ -2506,6 +2537,21 @@ function focusItem(id, options = {}) {
         content.focus();
         const range = document.createRange();
         const sel = window.getSelection();
+        
+        // If offset is specified, try to position cursor at that offset
+        if (typeof offset === 'number') {
+          const targetOffset = Math.min(offset, content.textContent.length);
+          const point = resolveOffsetToRangePoint(content, targetOffset);
+          if (point && point.node) {
+            range.setStart(point.node, point.offset);
+            range.collapse(true);
+            sel.removeAllRanges();
+            sel.addRange(range);
+            return;
+          }
+        }
+        
+        // Otherwise use position-based focusing
         if (position === 'start') {
           range.setStart(content, 0);
         } else if (content.childNodes.length > 0) {
