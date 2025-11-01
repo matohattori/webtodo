@@ -341,11 +341,12 @@ function analyzeBoldInRange(range, content) {
   let endNode = range.endContainer;
   
   // If containers are elements, get the text nodes
-  if (startNode.nodeType === Node.ELEMENT_NODE) {
+  if (startNode.nodeType === Node.ELEMENT_NODE && startNode.childNodes.length > 0) {
     startNode = startNode.childNodes[range.startOffset] || startNode;
   }
-  if (endNode.nodeType === Node.ELEMENT_NODE) {
-    endNode = endNode.childNodes[range.endOffset - 1] || endNode;
+  if (endNode.nodeType === Node.ELEMENT_NODE && endNode.childNodes.length > 0) {
+    const childIndex = Math.max(0, range.endOffset - 1);
+    endNode = endNode.childNodes[childIndex] || endNode;
   }
   
   // Handle single text node selection
@@ -367,18 +368,20 @@ function analyzeBoldInRange(range, content) {
     // Check if this node is within the range
     if (range.intersectsNode(node)) {
       let text = node.textContent || '';
+      let startIdx = 0;
+      let endIdx = text.length;
       
       // If this is the start node, only consider text after startOffset
       if (node === range.startContainer) {
-        text = text.substring(range.startOffset);
+        startIdx = range.startOffset;
       }
       // If this is the end node, only consider text before endOffset
       if (node === range.endContainer) {
-        const endOffset = node === range.startContainer 
-          ? range.endOffset - range.startOffset 
-          : range.endOffset;
-        text = text.substring(0, endOffset);
+        endIdx = range.endOffset;
       }
+      
+      // Extract the relevant portion of text
+      text = text.substring(startIdx, endIdx);
       
       if (text.trim().length > 0) {
         hasText = true;
