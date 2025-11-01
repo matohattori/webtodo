@@ -10,12 +10,12 @@ const LINK_DETECTION_REGEX = /(?:https?:\/\/[^\s<>"']+|[A-Za-z]:[\\/][^\s<>"']+|
 const TEXT_COLOR_OPTIONS = [
   { id: 'default', label: '標準', color: '' },
   { id: 'red', label: '赤', color: '#FF0000' },
-  { id: 'orange', label: 'オレンジ', color: '#FF8000' },
-  { id: 'yellow', label: '黄', color: '#FFFF00' },
-  { id: 'green', label: '緑', color: '#00FF00' },
+  { id: 'orange', label: 'オレンジ', color: '#FFA500' },
+  { id: 'yellow', label: '黄', color: '#FFD700' },
+  { id: 'green', label: '緑', color: '#008000' },
   { id: 'blue', label: '青', color: '#0000FF' },
   { id: 'purple', label: '紫', color: '#800080' },
-  { id: 'pink', label: 'ピンク', color: '#FF00FF' },
+  { id: 'pink', label: 'ピンク', color: '#FF1493' },
   { id: 'gray', label: 'グレー', color: '#808080' }
 ];
 
