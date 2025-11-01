@@ -3,8 +3,87 @@
 
 let items = [];
 let undoStack = [];
+let redoStack = [];
 
 const list = document.getElementById('todoList');
+
+// Undo/Redo system
+function captureStateForUndo(actionType, data) {
+  // Create a deep copy of the current items state
+  const stateCopy = items.map(item => ({...item}));
+  
+  undoStack.push({
+    actionType,
+    itemsSnapshot: stateCopy,
+    actionData: data
+  });
+  
+  // Clear redo stack when a new action is performed
+  redoStack = [];
+  
+  // Limit undo stack size to prevent memory issues
+  if (undoStack.length > 100) {
+    undoStack.shift();
+  }
+}
+
+function performUndo() {
+  if (undoStack.length === 0) {
+    return false;
+  }
+  
+  // Save current state to redo stack before undo
+  const currentState = items.map(item => ({...item}));
+  
+  // Get the last action from undo stack
+  const lastAction = undoStack.pop();
+  
+  // Push current state to redo stack
+  redoStack.push({
+    actionType: lastAction.actionType,
+    itemsSnapshot: currentState,
+    actionData: lastAction.actionData
+  });
+  
+  // Restore the previous state
+  items = lastAction.itemsSnapshot.map(item => ({...item}));
+  
+  // Just render without syncing to backend
+  // The state will be synced on next explicit operation
+  render();
+  
+  return true;
+}
+
+function performRedo() {
+  if (redoStack.length === 0) {
+    return false;
+  }
+  
+  // Save current state to undo stack before redo
+  const currentState = items.map(item => ({...item}));
+  
+  // Get the last redo action
+  const redoAction = redoStack.pop();
+  
+  // Push current state back to undo stack
+  undoStack.push({
+    actionType: redoAction.actionType,
+    itemsSnapshot: currentState,
+    actionData: redoAction.actionData
+  });
+  
+  // Restore the redo state
+  items = redoAction.itemsSnapshot.map(item => ({...item}));
+  
+  // Just render without syncing to backend
+  // The state will be synced on next explicit operation
+  render();
+  
+  return true;
+}
+
+
 
 const LINK_DETECTION_REGEX = /(?:https?:\/\/[^\s<>"']+|[A-Za-z]:[\\/][^\s<>"']+|\\\\[^\s<>"']+)/gi;
 const TEXT_COLOR_OPTIONS = [
@@ -553,6 +632,9 @@ function applyColorToSelection(content, colorId) {
 }
 
 function commitFormattingChange(content, item, options = {}) {
+  // Capture state before formatting change
+  captureStateForUndo('formatting', { itemId: item.id, oldText: item.text });
+  
   const selection = window.getSelection();
   const selectionSnapshot = (options.keepSelection && selection && selection.rangeCount > 0 && content.contains(selection.getRangeAt(0).commonAncestorContainer))
     ? captureSelection(selection, content)
@@ -622,6 +704,9 @@ function createItem(type = 'text', text = '', afterId = null, callback, options 
     return;
   }
   
+  // Capture state before creating
+  captureStateForUndo('create', { type, text, afterId });
+  
   const preparedText = prepareTextForStorage(text);
   
   const params = new URLSearchParams({text: preparedText, type});
@@ -657,6 +742,12 @@ function createItem(type = 'text', text = '', afterId = null, callback, options 
 function updateItem(id, updates, callback, options = {}) {
   const item = items.find(i => i.id === id);
   if (!item) return;
+
+  // Capture state before updating
+  // skipUndoCapture option available for future use if undo/redo operations need to update without capturing
+  if (!options.skipUndoCapture) {
+    captureStateForUndo('update', { id, updates });
+  }
 
   const skipAutoLink = updates && updates.skipAutoLink === true;
   if (updates && 'skipAutoLink' in updates) {
@@ -727,7 +818,8 @@ function updateItem(id, updates, callback, options = {}) {
 function deleteItem(id) {
   const index = items.findIndex(i => i.id === id);
   if (index !== -1) {
-    undoStack.push({ action: 'delete', item: { ...items[index] } });
+    // Capture state before deleting
+    captureStateForUndo('delete', { id });
     
     const params = new URLSearchParams({id: id.toString()});
     fetch('api.php?action=delete', {
@@ -743,16 +835,7 @@ function deleteItem(id) {
   }
 }
 
-// Undo last delete (Note: This won't work perfectly with SQLite backend)
-function undoDelete() {
-  if (undoStack.length > 0) {
-    const lastAction = undoStack.pop();
-    if (lastAction.action === 'delete') {
-      // Re-add the item via API
-      createItem(lastAction.item.type, lastAction.item.text);
-    }
-  }
-}
+
 
 // Insert item at position via API
 function insertItemAfter(afterId, type = 'text', text = '', callback, options = {}) {
@@ -761,6 +844,9 @@ function insertItemAfter(afterId, type = 'text', text = '', callback, options = 
 
 // Reorder items based on DOM order via API
 function reorderItems(callback) {
+  // Capture state before reordering
+  captureStateForUndo('reorder', {});
+  
   const lis = Array.from(list.querySelectorAll('li[data-id]'));
   const order = lis.map(li => li.dataset.id);
   
@@ -1827,6 +1913,9 @@ function promptForHyperlink(content, item) {
 function insertHyperlink(content, item, url) {
   if (!savedSelection) return;
   
+  // Capture state before inserting hyperlink
+  captureStateForUndo('hyperlink', { itemId: item.id, oldText: item.text });
+  
   try {
     // Restore selection with validation
     const selection = window.getSelection();
@@ -1868,6 +1957,9 @@ function insertHyperlink(content, item, url) {
 
 function removeHyperlink(anchor, content, item) {
   if (!anchor || !content) return;
+  
+  // Capture state before removing hyperlink
+  captureStateForUndo('remove_hyperlink', { itemId: item.id, oldText: item.text });
   
   const textNode = document.createTextNode(anchor.textContent);
   anchor.replaceWith(textNode);
@@ -2210,9 +2302,14 @@ function handleKeyDown(e, content, item, li) {
   } else if (e.key === 'Backspace' && getCaretOffset(content) === 0) {
     e.preventDefault();
     handleEmptyLineBackspace(item, content);
-  } else if (e.key === 'z' && (e.ctrlKey || e.metaKey)) {
+  } else if (e.key === 'z' && (e.ctrlKey || e.metaKey) && !e.shiftKey) {
+    // Undo within content editing context
     e.preventDefault();
-    undoDelete();
+    performUndo();
+  } else if ((e.key === 'y' && (e.ctrlKey || e.metaKey)) || (e.key === 'z' && (e.ctrlKey || e.metaKey) && e.shiftKey)) {
+    // Redo within content editing context
+    e.preventDefault();
+    performRedo();
   }
 }
 
@@ -2618,4 +2715,26 @@ window.addEventListener('load', () => {
     toggleBtn.setAttribute('aria-pressed', 'false');
     toggleBtn.addEventListener('click', toggleReorderMode);
   }
+  
+  // Setup global keyboard shortcuts for undo/redo (when not focused on editable elements)
+  // This is separate from the content-specific handlers to provide global shortcuts
+  document.addEventListener('keydown', (e) => {
+    // Only handle if not in an input, textarea, or contenteditable
+    const target = e.target;
+    const isEditable = target.isContentEditable || 
+                      target.tagName === 'INPUT' || 
+                      target.tagName === 'TEXTAREA';
+    
+    // Undo: Ctrl+Z (or Cmd+Z on Mac)
+    if (e.key === 'z' && (e.ctrlKey || e.metaKey) && !e.shiftKey && !isEditable) {
+      e.preventDefault();
+      performUndo();
+    }
+    // Redo: Ctrl+Y or Ctrl+Shift+Z (or Cmd+Y / Cmd+Shift+Z on Mac)
+    else if (((e.key === 'y' && (e.ctrlKey || e.metaKey)) || 
+              (e.key === 'z' && (e.ctrlKey || e.metaKey) && e.shiftKey)) && !isEditable) {
+      e.preventDefault();
+      performRedo();
+    }
+  });
 });
