@@ -34,8 +34,42 @@ if (!in_array('sort_order', $columns)) {
 if (!in_array('parent_id', $columns)) {
   $db->exec('ALTER TABLE todos ADD COLUMN parent_id INTEGER DEFAULT NULL');
 }
-
 $action = $_GET['action'] ?? '';
+
+function open_url_with_os(string $url): bool {
+  if ($url === '' || !preg_match('/^https?:\/\//i', $url)) {
+    return false;
+  }
+  
+  // Normalize line endings/newlines to avoid command injection
+  $url = str_replace(["\r", "\n"], '', $url);
+  $osFamily = PHP_OS_FAMILY;
+  
+  if ($osFamily === 'Windows') {
+    $escapedUrl = str_replace('"', '""', $url);
+    $command = 'cmd /c start "" "' . $escapedUrl . '"';
+    $handle = @popen($command, 'r');
+    if ($handle !== false) {
+      pclose($handle);
+      return true;
+    }
+    
+    // Fallback to PowerShell if cmd start fails (some PHP configs disable popen)
+    $psCommand = 'Start-Process -FilePath "' . str_replace('"', '`"', $url) . '"';
+    $ps = 'powershell -NoProfile -NonInteractive -WindowStyle Hidden -Command ' . escapeshellarg($psCommand);
+    @exec($ps, $output, $code);
+    return $code === 0;
+  }
+  
+  $escaped = escapeshellarg($url);
+  if ($osFamily === 'Darwin') {
+    $command = 'open ' . $escaped . ' >/dev/null 2>&1 &';
+  } else {
+    $command = 'xdg-open ' . $escaped . ' >/dev/null 2>&1 &';
+  }
+  @shell_exec($command);
+  return true;
+}
 
 switch ($action) {
   case 'list':
@@ -150,6 +184,23 @@ switch ($action) {
       }
       $db->exec('COMMIT');
     }
+    break;
+
+  case 'open_link':
+    $url = trim((string)($_POST['url'] ?? ''));
+    $response = [
+      'success' => false,
+    ];
+    if ($url === '' || !preg_match('/^https?:\/\//i', $url)) {
+      $response['error'] = 'invalid_url';
+    } else {
+      $response['success'] = open_url_with_os($url);
+      if (!$response['success']) {
+        $response['error'] = 'launch_failed';
+      }
+    }
+    header('Content-Type: application/json; charset=utf-8');
+    echo json_encode($response, JSON_UNESCAPED_UNICODE);
     break;
 
   default:
