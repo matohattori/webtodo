@@ -59,8 +59,56 @@ function applyDecorationPreset(item, presetId) {
     item.decoration = { presetId };
   }
   
+  // Find the content element for this item
+  const li = list.querySelector(`li[data-id="${item.id}"]`);
+  const content = li ? li.querySelector('.task-content') : null;
+  
+  // Save current focus state
+  const wasFocused = content && document.activeElement === content;
+  const selection = wasFocused ? window.getSelection() : null;
+  let savedRange = null;
+  
+  if (wasFocused && selection && selection.rangeCount > 0) {
+    savedRange = selection.getRangeAt(0).cloneRange();
+  }
+  
+  // Update decoration styles directly without re-rendering
+  if (content) {
+    // Clear existing decoration styles
+    content.style.fontWeight = '';
+    content.style.fontStyle = '';
+    content.style.textDecoration = '';
+    content.style.color = '';
+    content.classList.remove('decorated');
+    
+    // Apply new decoration if present
+    if (item.decoration && item.decoration.presetId) {
+      const preset = getPreset(item.decoration.presetId);
+      if (preset) {
+        if (preset.bold) content.style.fontWeight = 'bold';
+        if (preset.italic) content.style.fontStyle = 'italic';
+        if (preset.underline) content.style.textDecoration = 'underline';
+        if (preset.color) content.style.color = preset.color;
+        content.classList.add('decorated');
+      }
+    }
+    
+    // Restore focus and selection
+    if (wasFocused) {
+      content.focus();
+      if (savedRange && selection) {
+        try {
+          selection.removeAllRanges();
+          selection.addRange(savedRange);
+        } catch (e) {
+          // If restoration fails, just keep focus
+          console.warn('Could not restore selection:', e);
+        }
+      }
+    }
+  }
+  
   updateItem(item.id, { decoration: item.decoration }, undefined, { skipReload: true });
-  render();
 }
 
 // Undo/Redo system
