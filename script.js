@@ -11,10 +11,7 @@ const list = document.getElementById('todoList');
 
 // Default decoration presets
 const DEFAULT_PRESETS = [
-  { id: 'important', name: '重要', bold: true, italic: false, underline: false, color: '#FF0000', shortcut: '1' },
-  { id: 'note', name: '補足', bold: false, italic: true, underline: false, color: '#0066FF', shortcut: '2' },
-  { id: 'warning', name: '注意', bold: true, italic: false, underline: true, color: '#FF6600', shortcut: '3' },
-  { id: 'highlight', name: '強調', bold: true, italic: false, underline: false, color: '#006600', shortcut: '4' }
+  { id: 'important', name: '重要', bold: true, italic: false, color: '#FF0000', shortcut: '1' }
 ];
 
 // Load presets from localStorage or use defaults
@@ -1501,7 +1498,7 @@ function createPresetItem(preset, index) {
   nameInput.type = 'text';
   nameInput.value = preset.name;
   nameInput.className = 'preset-settings-input preset-name-input';
-  nameInput.placeholder = '装飾名を入力';
+  nameInput.placeholder = '装飾名..';
   nameInput.addEventListener('change', () => {
     preset.name = nameInput.value;
     savePresets();
@@ -1527,12 +1524,12 @@ function createPresetItem(preset, index) {
   });
   styleContainer.appendChild(italicCheck);
   
-  const underlineCheck = createCheckbox('下線', preset.underline, (checked) => {
+ /*  const underlineCheck = createCheckbox('下線', preset.underline, (checked) => {
     preset.underline = checked;
     savePresets();
     render();
   });
-  styleContainer.appendChild(underlineCheck);
+  styleContainer.appendChild(underlineCheck); */
   
   item.appendChild(styleContainer);
   
