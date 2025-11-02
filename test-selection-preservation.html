@@ -1,0 +1,491 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Selection Preservation Tests</title>
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      max-width: 900px;
+      margin: 40px auto;
+      padding: 20px;
+      background: #f5f5f5;
+    }
+    h1 {
+      color: #333;
+      border-bottom: 2px solid #4aa3ff;
+      padding-bottom: 10px;
+    }
+    .test-section {
+      background: white;
+      padding: 20px;
+      margin: 20px 0;
+      border-radius: 8px;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+    .test-case {
+      margin: 15px 0;
+      padding: 10px;
+      border-left: 4px solid #ddd;
+    }
+    .test-case.passed {
+      border-color: #4caf50;
+      background: #f1f8f4;
+    }
+    .test-case.failed {
+      border-color: #f44336;
+      background: #fef1f0;
+    }
+    .test-name {
+      font-weight: 600;
+      margin-bottom: 5px;
+    }
+    .test-result {
+      font-size: 14px;
+      color: #666;
+    }
+    .test-details {
+      margin-top: 10px;
+      font-family: monospace;
+      font-size: 12px;
+      background: #f9f9f9;
+      padding: 10px;
+      border-radius: 4px;
+      overflow-x: auto;
+    }
+    .summary {
+      background: #e3f2fd;
+      padding: 15px;
+      border-radius: 8px;
+      margin: 20px 0;
+      font-weight: 600;
+    }
+    .summary.all-passed {
+      background: #e8f5e9;
+      color: #2e7d32;
+    }
+    .summary.has-failures {
+      background: #ffebee;
+      color: #c62828;
+    }
+    .task-content {
+      min-height: 30px;
+      padding: 5px;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+      margin: 10px 0;
+    }
+  </style>
+</head>
+<body>
+  <h1>Text Selection Preservation Tests</h1>
+  <p>These tests verify that text selection is preserved after applying bold, color, and hyperlink formatting.</p>
+  
+  <div id="test-results"></div>
+  <div id="summary"></div>
+
+  <script src="script.js"></script>
+  <script>
+    // Test utilities
+    const tests = [];
+    let passedTests = 0;
+    let failedTests = 0;
+
+    function assertEquals(actual, expected, message) {
+      if (actual !== expected) {
+        throw new Error(`${message}\nExpected: ${expected}\nActual: ${actual}`);
+      }
+    }
+
+    function assertNotEquals(actual, notExpected, message) {
+      if (actual === notExpected) {
+        throw new Error(`${message}\nShould not equal: ${notExpected}\nActual: ${actual}`);
+      }
+    }
+
+    function assertGreaterThan(actual, threshold, message) {
+      if (actual <= threshold) {
+        throw new Error(`${message}\nExpected > ${threshold}\nActual: ${actual}`);
+      }
+    }
+
+    function createTestContent() {
+      const content = document.createElement('div');
+      content.className = 'task-content';
+      content.contentEditable = 'true';
+      document.body.appendChild(content);
+      return content;
+    }
+
+    function cleanupTestContent(content) {
+      if (content && content.parentNode) {
+        content.parentNode.removeChild(content);
+      }
+    }
+
+    function selectTextInContent(content, startOffset, endOffset) {
+      const textNode = content.firstChild;
+      const range = document.createRange();
+      const selection = window.getSelection();
+      range.setStart(textNode, startOffset);
+      range.setEnd(textNode, endOffset);
+      selection.removeAllRanges();
+      selection.addRange(range);
+      return range;
+    }
+
+    function getSelectedText() {
+      const selection = window.getSelection();
+      return selection ? selection.toString() : '';
+    }
+
+    function isTextSelected() {
+      const selection = window.getSelection();
+      return selection && selection.rangeCount > 0 && !selection.getRangeAt(0).collapsed;
+    }
+
+    function getSelectionLength() {
+      const selection = window.getSelection();
+      if (!selection || selection.rangeCount === 0) return 0;
+      return selection.toString().length;
+    }
+
+    // Test cases for bold formatting
+    tests.push({
+      name: 'Bold: Selection is preserved after applying bold',
+      run: function() {
+        const content = createTestContent();
+        try {
+          content.textContent = 'This is test text';
+          selectTextInContent(content, 8, 12); // Select "test"
+          
+          const selectedBefore = getSelectedText();
+          assertEquals(selectedBefore, 'test', 'Should select "test" before bold');
+          
+          // Apply bold
+          toggleBoldSelection(content);
+          
+          // Check selection is still present
+          const isSelected = isTextSelected();
+          assertEquals(isSelected, true, 'Selection should be maintained after bold');
+          
+          const selectedAfter = getSelectedText();
+          assertEquals(selectedAfter, 'test', 'Should still select "test" after bold');
+          
+          const selectionLength = getSelectionLength();
+          assertEquals(selectionLength, 4, 'Selection length should be 4');
+          
+          return { passed: true, details: `Selected text: "${selectedAfter}"` };
+        } finally {
+          cleanupTestContent(content);
+        }
+      }
+    });
+
+    tests.push({
+      name: 'Bold: Selection is preserved after removing bold',
+      run: function() {
+        const content = createTestContent();
+        try {
+          content.innerHTML = '<strong>Bold text here</strong>';
+          
+          // Select "Bold"
+          const strong = content.querySelector('strong');
+          const textNode = strong.firstChild;
+          const range = document.createRange();
+          const selection = window.getSelection();
+          range.setStart(textNode, 0);
+          range.setEnd(textNode, 4);
+          selection.removeAllRanges();
+          selection.addRange(range);
+          
+          const selectedBefore = getSelectedText();
+          assertEquals(selectedBefore, 'Bold', 'Should select "Bold" before toggle');
+          
+          // Remove bold (toggle)
+          toggleBoldSelection(content);
+          
+          // Check selection is still present
+          const isSelected = isTextSelected();
+          assertEquals(isSelected, true, 'Selection should be maintained after removing bold');
+          
+          const selectedAfter = getSelectedText();
+          assertEquals(selectedAfter, 'Bold', 'Should still select "Bold" after removing bold');
+          
+          return { passed: true, details: `Selected text: "${selectedAfter}"` };
+        } finally {
+          cleanupTestContent(content);
+        }
+      }
+    });
+
+    tests.push({
+      name: 'Bold: Selection is preserved when toggling bold on already bolded text',
+      run: function() {
+        const content = createTestContent();
+        try {
+          content.innerHTML = '<strong>Bold text</strong>';
+          
+          const strong = content.querySelector('strong');
+          const textNode = strong.firstChild;
+          const range = document.createRange();
+          const selection = window.getSelection();
+          range.setStart(textNode, 0);
+          range.setEnd(textNode, 9);
+          selection.removeAllRanges();
+          selection.addRange(range);
+          
+          assertEquals(getSelectedText(), 'Bold text', 'Should select all text before toggle');
+          
+          // Toggle off
+          toggleBoldSelection(content);
+          assertEquals(isTextSelected(), true, 'Selection should be maintained after toggle off');
+          assertEquals(getSelectedText(), 'Bold text', 'Should still select all text after toggle off');
+          
+          // Toggle on again
+          toggleBoldSelection(content);
+          assertEquals(isTextSelected(), true, 'Selection should be maintained after toggle on');
+          assertEquals(getSelectedText(), 'Bold text', 'Should still select all text after toggle on');
+          
+          return { passed: true, details: 'Selection maintained through double toggle' };
+        } finally {
+          cleanupTestContent(content);
+        }
+      }
+    });
+
+    // Test cases for color formatting
+    tests.push({
+      name: 'Color: Selection is preserved after applying color',
+      run: function() {
+        const content = createTestContent();
+        const mockItem = { id: 1, text: '', type: 'text' };
+        try {
+          content.textContent = 'Color this text';
+          selectTextInContent(content, 6, 10); // Select "this"
+          
+          const selectedBefore = getSelectedText();
+          assertEquals(selectedBefore, 'this', 'Should select "this" before color');
+          
+          // Apply color
+          const applied = applyColorToSelection(content, 'red');
+          assertEquals(applied, true, 'Color should be applied');
+          
+          // Check selection is still present
+          const isSelected = isTextSelected();
+          assertEquals(isSelected, true, 'Selection should be maintained after color');
+          
+          const selectedAfter = getSelectedText();
+          assertEquals(selectedAfter, 'this', 'Should still select "this" after color');
+          
+          const selectionLength = getSelectionLength();
+          assertEquals(selectionLength, 4, 'Selection length should be 4');
+          
+          return { passed: true, details: `Selected text: "${selectedAfter}"` };
+        } finally {
+          cleanupTestContent(content);
+        }
+      }
+    });
+
+    tests.push({
+      name: 'Color: Selection is preserved when changing color',
+      run: function() {
+        const content = createTestContent();
+        try {
+          content.innerHTML = '<span data-text-color="red" style="color: #FF0000;">Red text</span>';
+          
+          const span = content.querySelector('span');
+          const textNode = span.firstChild;
+          const range = document.createRange();
+          const selection = window.getSelection();
+          range.setStart(textNode, 0);
+          range.setEnd(textNode, 8);
+          selection.removeAllRanges();
+          selection.addRange(range);
+          
+          assertEquals(getSelectedText(), 'Red text', 'Should select text before color change');
+          
+          // Change to blue
+          const applied = applyColorToSelection(content, 'blue');
+          assertEquals(applied, true, 'New color should be applied');
+          
+          assertEquals(isTextSelected(), true, 'Selection should be maintained after color change');
+          assertEquals(getSelectedText(), 'Red text', 'Should still select text after color change');
+          
+          return { passed: true, details: 'Selection maintained through color change' };
+        } finally {
+          cleanupTestContent(content);
+        }
+      }
+    });
+
+    tests.push({
+      name: 'Color: Selection is preserved when removing color',
+      run: function() {
+        const content = createTestContent();
+        try {
+          content.innerHTML = '<span data-text-color="blue" style="color: #3300FF;">Blue text</span>';
+          
+          const span = content.querySelector('span');
+          const textNode = span.firstChild;
+          const range = document.createRange();
+          const selection = window.getSelection();
+          range.setStart(textNode, 0);
+          range.setEnd(textNode, 9);
+          selection.removeAllRanges();
+          selection.addRange(range);
+          
+          assertEquals(getSelectedText(), 'Blue text', 'Should select text before color removal');
+          
+          // Remove color (set to default)
+          const applied = applyColorToSelection(content, 'default');
+          assertEquals(applied, true, 'Color removal should succeed');
+          
+          assertEquals(isTextSelected(), true, 'Selection should be maintained after color removal');
+          assertEquals(getSelectedText(), 'Blue text', 'Should still select text after color removal');
+          
+          return { passed: true, details: 'Selection maintained through color removal' };
+        } finally {
+          cleanupTestContent(content);
+        }
+      }
+    });
+
+    // Test cases for hyperlink formatting
+    tests.push({
+      name: 'Hyperlink: Selection is preserved after adding link',
+      run: function() {
+        const content = createTestContent();
+        const mockItem = { id: 1, text: '', type: 'text' };
+        try {
+          content.textContent = 'Link this text';
+          selectTextInContent(content, 5, 9); // Select "this"
+          
+          const selectedBefore = getSelectedText();
+          assertEquals(selectedBefore, 'this', 'Should select "this" before link');
+          
+          // Save selection and insert link
+          const selection = window.getSelection();
+          savedSelection = captureSelection(selection, content);
+          insertHyperlink(content, mockItem, 'https://example.com');
+          
+          // Check selection is still present
+          const isSelected = isTextSelected();
+          assertEquals(isSelected, true, 'Selection should be maintained after link insertion');
+          
+          const selectedAfter = getSelectedText();
+          assertEquals(selectedAfter, 'this', 'Should still select "this" after link');
+          
+          // Verify link was created
+          const anchor = content.querySelector('a');
+          assertNotEquals(anchor, null, 'Anchor element should exist');
+          
+          return { passed: true, details: `Selected text: "${selectedAfter}"` };
+        } finally {
+          cleanupTestContent(content);
+        }
+      }
+    });
+
+    tests.push({
+      name: 'Hyperlink: Selection is preserved after removing link',
+      run: function() {
+        const content = createTestContent();
+        const mockItem = { id: 1, text: '', type: 'text' };
+        try {
+          content.innerHTML = '<a href="https://example.com" data-original-href="https://example.com">Link text</a>';
+          
+          const anchor = content.querySelector('a');
+          const textNode = anchor.firstChild;
+          const range = document.createRange();
+          const selection = window.getSelection();
+          range.setStart(textNode, 0);
+          range.setEnd(textNode, 9);
+          selection.removeAllRanges();
+          selection.addRange(range);
+          
+          assertEquals(getSelectedText(), 'Link text', 'Should select text before link removal');
+          
+          // Remove link
+          removeHyperlink(anchor, content, mockItem);
+          
+          assertEquals(isTextSelected(), true, 'Selection should be maintained after link removal');
+          assertEquals(getSelectedText(), 'Link text', 'Should still select text after link removal');
+          
+          return { passed: true, details: 'Selection maintained through link removal' };
+        } finally {
+          cleanupTestContent(content);
+        }
+      }
+    });
+
+    // Run all tests
+    function runTests() {
+      const resultsDiv = document.getElementById('test-results');
+      
+      tests.forEach(test => {
+        const testDiv = document.createElement('div');
+        testDiv.className = 'test-case';
+        
+        const testName = document.createElement('div');
+        testName.className = 'test-name';
+        testName.textContent = test.name;
+        testDiv.appendChild(testName);
+        
+        const testResult = document.createElement('div');
+        testResult.className = 'test-result';
+        
+        try {
+          const result = test.run();
+          if (result.passed) {
+            testDiv.classList.add('passed');
+            testResult.textContent = '✓ PASSED';
+            passedTests++;
+          } else {
+            testDiv.classList.add('failed');
+            testResult.textContent = '✗ FAILED';
+            failedTests++;
+          }
+          
+          if (result.details) {
+            const details = document.createElement('div');
+            details.className = 'test-details';
+            details.textContent = result.details;
+            testDiv.appendChild(details);
+          }
+        } catch (error) {
+          testDiv.classList.add('failed');
+          testResult.textContent = '✗ FAILED: ' + error.message;
+          failedTests++;
+          
+          const details = document.createElement('div');
+          details.className = 'test-details';
+          details.textContent = error.stack || error.toString();
+          testDiv.appendChild(details);
+        }
+        
+        testDiv.appendChild(testResult);
+        resultsDiv.appendChild(testDiv);
+      });
+      
+      // Display summary
+      const summaryDiv = document.getElementById('summary');
+      summaryDiv.className = 'summary';
+      summaryDiv.textContent = `Test Results: ${passedTests} passed, ${failedTests} failed out of ${tests.length} total`;
+      
+      if (failedTests === 0) {
+        summaryDiv.classList.add('all-passed');
+      } else {
+        summaryDiv.classList.add('has-failures');
+      }
+    }
+
+    // Run tests when page loads
+    window.addEventListener('load', () => {
+      setTimeout(runTests, 100); // Give time for script.js to initialize
+    });
+  </script>
+</body>
+</html>

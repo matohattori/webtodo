@@ -675,7 +675,6 @@ function applyColorToSelection(content, colorId) {
   if (selection) {
     const finalRange = document.createRange();
     finalRange.selectNodeContents(span);
-    finalRange.collapse(false); // Collapse to end to avoid issues when pressing Enter immediately
     selection.removeAllRanges();
     selection.addRange(finalRange);
   }
@@ -705,14 +704,6 @@ function commitFormattingChange(content, item, options = {}) {
       savedSelection = selectionSnapshot;
       restoreSelectionForContent(content);
       refreshSavedSelection(content);
-      // Collapse selection to end after formatting to avoid issues when pressing Enter immediately
-      const sel = window.getSelection();
-      if (sel && sel.rangeCount > 0) {
-        const range = sel.getRangeAt(0);
-        range.collapse(false); // Collapse to end
-        sel.removeAllRanges();
-        sel.addRange(range);
-      }
     }
   };
 
@@ -2079,11 +2070,11 @@ function insertHyperlink(content, item, url) {
     savedSelection.range.deleteContents();
     savedSelection.range.insertNode(anchor);
     
-    // Move cursor after the link
-    savedSelection.range.setStartAfter(anchor);
-    savedSelection.range.setEndAfter(anchor);
+    // Select the newly created link
+    const newRange = document.createRange();
+    newRange.selectNodeContents(anchor);
     selection.removeAllRanges();
-    selection.addRange(savedSelection.range);
+    selection.addRange(newRange);
     
     // Sanitize and update the item text with the new HTML content
     const sanitizedContent = sanitizeHtml(content.innerHTML);
@@ -2108,7 +2099,6 @@ function removeHyperlink(anchor, content, item) {
   if (selection) {
     const newRange = document.createRange();
     newRange.selectNodeContents(textNode);
-    newRange.collapse(false);
     selection.removeAllRanges();
     selection.addRange(newRange);
   }
