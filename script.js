@@ -675,6 +675,7 @@ function applyColorToSelection(content, colorId) {
   if (selection) {
     const finalRange = document.createRange();
     finalRange.selectNodeContents(span);
+    finalRange.collapse(false); // Collapse to end to avoid issues when pressing Enter immediately
     selection.removeAllRanges();
     selection.addRange(finalRange);
   }
@@ -704,6 +705,14 @@ function commitFormattingChange(content, item, options = {}) {
       savedSelection = selectionSnapshot;
       restoreSelectionForContent(content);
       refreshSavedSelection(content);
+      // Collapse selection to end after formatting to avoid issues when pressing Enter immediately
+      const sel = window.getSelection();
+      if (sel && sel.rangeCount > 0) {
+        const range = sel.getRangeAt(0);
+        range.collapse(false); // Collapse to end
+        sel.removeAllRanges();
+        sel.addRange(range);
+      }
     }
   };
 
