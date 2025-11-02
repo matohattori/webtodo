@@ -1,0 +1,477 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Text Formatting Tests</title>
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      max-width: 800px;
+      margin: 40px auto;
+      padding: 20px;
+      background: #f5f5f5;
+    }
+    h1 {
+      color: #333;
+      border-bottom: 2px solid #4aa3ff;
+      padding-bottom: 10px;
+    }
+    .test-section {
+      background: white;
+      padding: 20px;
+      margin: 20px 0;
+      border-radius: 8px;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+    .test-case {
+      margin: 15px 0;
+      padding: 10px;
+      border-left: 4px solid #ddd;
+    }
+    .test-case.passed {
+      border-color: #4caf50;
+      background: #f1f8f4;
+    }
+    .test-case.failed {
+      border-color: #f44336;
+      background: #fef1f0;
+    }
+    .test-name {
+      font-weight: 600;
+      margin-bottom: 5px;
+    }
+    .test-result {
+      font-size: 14px;
+      color: #666;
+    }
+    .test-details {
+      margin-top: 10px;
+      font-family: monospace;
+      font-size: 12px;
+      background: #f9f9f9;
+      padding: 10px;
+      border-radius: 4px;
+      overflow-x: auto;
+    }
+    .summary {
+      background: #e3f2fd;
+      padding: 15px;
+      border-radius: 8px;
+      margin: 20px 0;
+      font-weight: 600;
+    }
+    .summary.all-passed {
+      background: #e8f5e9;
+      color: #2e7d32;
+    }
+    .summary.has-failures {
+      background: #ffebee;
+      color: #c62828;
+    }
+  </style>
+</head>
+<body>
+  <h1>Text Formatting Preservation Tests</h1>
+  <p>These tests verify that text formatting (bold, color, hyperlinks) is preserved when pressing Enter to create a new line.</p>
+  
+  <div id="test-results"></div>
+  <div id="summary"></div>
+
+  <script>
+    // Test utilities
+    const tests = [];
+    let passedTests = 0;
+    let failedTests = 0;
+
+    function assertEquals(actual, expected, message) {
+      if (actual !== expected) {
+        throw new Error(`${message}\nExpected: ${expected}\nActual: ${actual}`);
+      }
+    }
+
+    function assertContains(haystack, needle, message) {
+      if (!haystack.includes(needle)) {
+        throw new Error(`${message}\nExpected to contain: ${needle}\nActual: ${haystack}`);
+      }
+    }
+
+    function createTestContent() {
+      const content = document.createElement('div');
+      content.className = 'task-content';
+      content.contentEditable = 'true';
+      document.body.appendChild(content);
+      return content;
+    }
+
+    function cleanupTestContent(content) {
+      if (content && content.parentNode) {
+        content.parentNode.removeChild(content);
+      }
+    }
+
+    function splitHtmlAtCaret(content) {
+      const selection = window.getSelection();
+      if (!selection || selection.rangeCount === 0) {
+        return {
+          beforeHtml: content.innerHTML || '',
+          afterHtml: '',
+          atEnd: true
+        };
+      }
+      
+      const range = selection.getRangeAt(0);
+      if (!content.contains(range.startContainer)) {
+        return {
+          beforeHtml: content.innerHTML || '',
+          afterHtml: '',
+          atEnd: true
+        };
+      }
+      
+      const beforeRange = document.createRange();
+      beforeRange.setStart(content, 0);
+      beforeRange.setEnd(range.startContainer, range.startOffset);
+      
+      const afterRange = document.createRange();
+      afterRange.setStart(range.startContainer, range.startOffset);
+      afterRange.setEnd(content, content.childNodes.length);
+      
+      const beforeFragment = beforeRange.cloneContents();
+      const afterFragment = afterRange.cloneContents();
+      
+      const tempBefore = document.createElement('div');
+      tempBefore.appendChild(beforeFragment);
+      const beforeHtml = tempBefore.innerHTML;
+      
+      const tempAfter = document.createElement('div');
+      tempAfter.appendChild(afterFragment);
+      const afterHtml = tempAfter.innerHTML;
+      
+      const atEnd = afterHtml.trim() === '';
+      
+      return {
+        beforeHtml: beforeHtml,
+        afterHtml: afterHtml,
+        atEnd: atEnd
+      };
+    }
+
+    // Test cases
+    tests.push({
+      name: 'Test 1: Bold text at end - pressing Enter preserves bold',
+      run: function() {
+        const content = createTestContent();
+        try {
+          content.innerHTML = '<strong>Bold text</strong>';
+          
+          // Position cursor at end
+          const range = document.createRange();
+          const selection = window.getSelection();
+          range.selectNodeContents(content);
+          range.collapse(false);
+          selection.removeAllRanges();
+          selection.addRange(range);
+          
+          // Split at caret
+          const result = splitHtmlAtCaret(content);
+          
+          // Verify bold tag is preserved
+          assertContains(result.beforeHtml, '<strong>', 'Before should contain <strong> tag');
+          assertContains(result.beforeHtml, 'Bold text', 'Before should contain text');
+          assertEquals(result.atEnd, true, 'Should be at end');
+          assertEquals(result.afterHtml, '', 'After should be empty');
+          
+          return { passed: true, details: `beforeHtml: ${result.beforeHtml}, afterHtml: ${result.afterHtml}` };
+        } finally {
+          cleanupTestContent(content);
+        }
+      }
+    });
+
+    tests.push({
+      name: 'Test 2: Bold text in middle - splitting preserves bold in both parts',
+      run: function() {
+        const content = createTestContent();
+        try {
+          content.innerHTML = '<strong>Bold text here</strong>';
+          
+          // Position cursor in middle (after "Bold ")
+          const strong = content.querySelector('strong');
+          const textNode = strong.firstChild;
+          const range = document.createRange();
+          const selection = window.getSelection();
+          range.setStart(textNode, 5); // After "Bold "
+          range.collapse(true);
+          selection.removeAllRanges();
+          selection.addRange(range);
+          
+          // Split at caret
+          const result = splitHtmlAtCaret(content);
+          
+          // Verify both parts have bold
+          assertContains(result.beforeHtml, '<strong>', 'Before should contain <strong> tag');
+          assertContains(result.beforeHtml, 'Bold', 'Before should contain "Bold"');
+          assertContains(result.afterHtml, '<strong>', 'After should contain <strong> tag');
+          assertContains(result.afterHtml, 'text here', 'After should contain "text here"');
+          assertEquals(result.atEnd, false, 'Should not be at end');
+          
+          return { passed: true, details: `beforeHtml: ${result.beforeHtml}, afterHtml: ${result.afterHtml}` };
+        } finally {
+          cleanupTestContent(content);
+        }
+      }
+    });
+
+    tests.push({
+      name: 'Test 3: Colored text at end - pressing Enter preserves color',
+      run: function() {
+        const content = createTestContent();
+        try {
+          content.innerHTML = '<span data-text-color="red" style="color: rgb(255, 0, 0);">Red text</span>';
+          
+          // Position cursor at end
+          const range = document.createRange();
+          const selection = window.getSelection();
+          range.selectNodeContents(content);
+          range.collapse(false);
+          selection.removeAllRanges();
+          selection.addRange(range);
+          
+          // Split at caret
+          const result = splitHtmlAtCaret(content);
+          
+          // Verify color span is preserved
+          assertContains(result.beforeHtml, 'data-text-color="red"', 'Before should contain color attribute');
+          assertContains(result.beforeHtml, 'Red text', 'Before should contain text');
+          assertEquals(result.atEnd, true, 'Should be at end');
+          
+          return { passed: true, details: `beforeHtml: ${result.beforeHtml}` };
+        } finally {
+          cleanupTestContent(content);
+        }
+      }
+    });
+
+    tests.push({
+      name: 'Test 4: Colored text in middle - splitting preserves color in both parts',
+      run: function() {
+        const content = createTestContent();
+        try {
+          content.innerHTML = '<span data-text-color="blue" style="color: rgb(51, 0, 255);">Blue text here</span>';
+          
+          // Position cursor in middle (after "Blue ")
+          const span = content.querySelector('span');
+          const textNode = span.firstChild;
+          const range = document.createRange();
+          const selection = window.getSelection();
+          range.setStart(textNode, 5); // After "Blue "
+          range.collapse(true);
+          selection.removeAllRanges();
+          selection.addRange(range);
+          
+          // Split at caret
+          const result = splitHtmlAtCaret(content);
+          
+          // Verify both parts have color
+          assertContains(result.beforeHtml, 'data-text-color="blue"', 'Before should contain color attribute');
+          assertContains(result.afterHtml, 'data-text-color="blue"', 'After should contain color attribute');
+          assertContains(result.beforeHtml, 'Blue', 'Before should contain "Blue"');
+          assertContains(result.afterHtml, 'text here', 'After should contain "text here"');
+          
+          return { passed: true, details: `beforeHtml: ${result.beforeHtml}, afterHtml: ${result.afterHtml}` };
+        } finally {
+          cleanupTestContent(content);
+        }
+      }
+    });
+
+    tests.push({
+      name: 'Test 5: Hyperlink at end - pressing Enter preserves link',
+      run: function() {
+        const content = createTestContent();
+        try {
+          content.innerHTML = '<a href="https://example.com" data-original-href="https://example.com">Link text</a>';
+          
+          // Position cursor at end
+          const range = document.createRange();
+          const selection = window.getSelection();
+          range.selectNodeContents(content);
+          range.collapse(false);
+          selection.removeAllRanges();
+          selection.addRange(range);
+          
+          // Split at caret
+          const result = splitHtmlAtCaret(content);
+          
+          // Verify link is preserved
+          assertContains(result.beforeHtml, '<a href="https://example.com"', 'Before should contain link');
+          assertContains(result.beforeHtml, 'Link text', 'Before should contain link text');
+          assertEquals(result.atEnd, true, 'Should be at end');
+          
+          return { passed: true, details: `beforeHtml: ${result.beforeHtml}` };
+        } finally {
+          cleanupTestContent(content);
+        }
+      }
+    });
+
+    tests.push({
+      name: 'Test 6: Hyperlink in middle - splitting preserves link in both parts',
+      run: function() {
+        const content = createTestContent();
+        try {
+          content.innerHTML = '<a href="https://example.com" data-original-href="https://example.com">Link text here</a>';
+          
+          // Position cursor in middle (after "Link ")
+          const anchor = content.querySelector('a');
+          const textNode = anchor.firstChild;
+          const range = document.createRange();
+          const selection = window.getSelection();
+          range.setStart(textNode, 5); // After "Link "
+          range.collapse(true);
+          selection.removeAllRanges();
+          selection.addRange(range);
+          
+          // Split at caret
+          const result = splitHtmlAtCaret(content);
+          
+          // Verify both parts have link
+          assertContains(result.beforeHtml, '<a href="https://example.com"', 'Before should contain link');
+          assertContains(result.afterHtml, '<a href="https://example.com"', 'After should contain link');
+          assertContains(result.beforeHtml, 'Link', 'Before should contain "Link"');
+          assertContains(result.afterHtml, 'text here', 'After should contain "text here"');
+          
+          return { passed: true, details: `beforeHtml: ${result.beforeHtml}, afterHtml: ${result.afterHtml}` };
+        } finally {
+          cleanupTestContent(content);
+        }
+      }
+    });
+
+    tests.push({
+      name: 'Test 7: Mixed formatting (bold + colored) - preserves both',
+      run: function() {
+        const content = createTestContent();
+        try {
+          content.innerHTML = '<strong><span data-text-color="red" style="color: rgb(255, 0, 0);">Bold red text</span></strong>';
+          
+          // Position cursor at end
+          const range = document.createRange();
+          const selection = window.getSelection();
+          range.selectNodeContents(content);
+          range.collapse(false);
+          selection.removeAllRanges();
+          selection.addRange(range);
+          
+          // Split at caret
+          const result = splitHtmlAtCaret(content);
+          
+          // Verify both bold and color are preserved
+          assertContains(result.beforeHtml, '<strong>', 'Before should contain <strong> tag');
+          assertContains(result.beforeHtml, 'data-text-color="red"', 'Before should contain color attribute');
+          assertContains(result.beforeHtml, 'Bold red text', 'Before should contain text');
+          
+          return { passed: true, details: `beforeHtml: ${result.beforeHtml}` };
+        } finally {
+          cleanupTestContent(content);
+        }
+      }
+    });
+
+    tests.push({
+      name: 'Test 8: Plain text - no formatting to preserve',
+      run: function() {
+        const content = createTestContent();
+        try {
+          content.innerHTML = 'Plain text';
+          
+          // Position cursor at end
+          const range = document.createRange();
+          const selection = window.getSelection();
+          range.selectNodeContents(content);
+          range.collapse(false);
+          selection.removeAllRanges();
+          selection.addRange(range);
+          
+          // Split at caret
+          const result = splitHtmlAtCaret(content);
+          
+          // Verify plain text is handled correctly
+          assertEquals(result.beforeHtml, 'Plain text', 'Before should be plain text');
+          assertEquals(result.afterHtml, '', 'After should be empty');
+          assertEquals(result.atEnd, true, 'Should be at end');
+          
+          return { passed: true, details: `beforeHtml: ${result.beforeHtml}` };
+        } finally {
+          cleanupTestContent(content);
+        }
+      }
+    });
+
+    // Run all tests
+    function runTests() {
+      const resultsDiv = document.getElementById('test-results');
+      
+      tests.forEach(test => {
+        const testDiv = document.createElement('div');
+        testDiv.className = 'test-case';
+        
+        const testName = document.createElement('div');
+        testName.className = 'test-name';
+        testName.textContent = test.name;
+        testDiv.appendChild(testName);
+        
+        const testResult = document.createElement('div');
+        testResult.className = 'test-result';
+        
+        try {
+          const result = test.run();
+          if (result.passed) {
+            testDiv.classList.add('passed');
+            testResult.textContent = '✓ PASSED';
+            passedTests++;
+          } else {
+            testDiv.classList.add('failed');
+            testResult.textContent = '✗ FAILED';
+            failedTests++;
+          }
+          
+          if (result.details) {
+            const details = document.createElement('div');
+            details.className = 'test-details';
+            details.textContent = result.details;
+            testDiv.appendChild(details);
+          }
+        } catch (error) {
+          testDiv.classList.add('failed');
+          testResult.textContent = '✗ FAILED: ' + error.message;
+          failedTests++;
+          
+          const details = document.createElement('div');
+          details.className = 'test-details';
+          details.textContent = error.stack || error.toString();
+          testDiv.appendChild(details);
+        }
+        
+        testDiv.appendChild(testResult);
+        resultsDiv.appendChild(testDiv);
+      });
+      
+      // Display summary
+      const summaryDiv = document.getElementById('summary');
+      summaryDiv.className = 'summary';
+      summaryDiv.textContent = `Test Results: ${passedTests} passed, ${failedTests} failed out of ${tests.length} total`;
+      
+      if (failedTests === 0) {
+        summaryDiv.classList.add('all-passed');
+      } else {
+        summaryDiv.classList.add('has-failures');
+      }
+    }
+
+    // Run tests when page loads
+    window.addEventListener('load', runTests);
+  </script>
+</body>
+</html>

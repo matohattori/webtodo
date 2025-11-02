@@ -155,6 +155,58 @@ function splitTextAtCaret(content) {
   };
 }
 
+function splitHtmlAtCaret(content) {
+  const selection = window.getSelection();
+  if (!selection || selection.rangeCount === 0) {
+    return {
+      beforeHtml: content.innerHTML || '',
+      afterHtml: '',
+      atEnd: true
+    };
+  }
+  
+  const range = selection.getRangeAt(0);
+  if (!content.contains(range.startContainer)) {
+    return {
+      beforeHtml: content.innerHTML || '',
+      afterHtml: '',
+      atEnd: true
+    };
+  }
+  
+  // Create a range from the start of content to the caret position
+  const beforeRange = document.createRange();
+  beforeRange.setStart(content, 0);
+  beforeRange.setEnd(range.startContainer, range.startOffset);
+  
+  // Create a range from the caret position to the end of content
+  const afterRange = document.createRange();
+  afterRange.setStart(range.startContainer, range.startOffset);
+  afterRange.setEnd(content, content.childNodes.length);
+  
+  // Extract HTML content from both ranges
+  const beforeFragment = beforeRange.cloneContents();
+  const afterFragment = afterRange.cloneContents();
+  
+  // Convert fragments to HTML strings
+  const tempBefore = document.createElement('div');
+  tempBefore.appendChild(beforeFragment);
+  const beforeHtml = tempBefore.innerHTML;
+  
+  const tempAfter = document.createElement('div');
+  tempAfter.appendChild(afterFragment);
+  const afterHtml = tempAfter.innerHTML;
+  
+  // Check if we're at the end
+  const atEnd = afterHtml.trim() === '';
+  
+  return {
+    beforeHtml: beforeHtml,
+    afterHtml: afterHtml,
+    atEnd: atEnd
+  };
+}
+
 function getRangeOffsetsWithin(container, range) {
   if (!container || !range) return { start: null, end: null };
   try {
@@ -623,6 +675,7 @@ function applyColorToSelection(content, colorId) {
   if (selection) {
     const finalRange = document.createRange();
     finalRange.selectNodeContents(span);
+    finalRange.collapse(false); // Collapse to end to avoid issues when pressing Enter immediately
     selection.removeAllRanges();
     selection.addRange(finalRange);
   }
@@ -652,6 +705,14 @@ function commitFormattingChange(content, item, options = {}) {
       savedSelection = selectionSnapshot;
       restoreSelectionForContent(content);
       refreshSavedSelection(content);
+      // Collapse selection to end after formatting to avoid issues when pressing Enter immediately
+      const sel = window.getSelection();
+      if (sel && sel.rangeCount > 0) {
+        const range = sel.getRangeAt(0);
+        range.collapse(false); // Collapse to end
+        sel.removeAllRanges();
+        sel.addRange(range);
+      }
     }
   };
 
@@ -2453,9 +2514,20 @@ function resolveNextType(item) {
 // Handle Enter key
 function handleEnter(item, li, content) {
   if (!content) return;
-  const { before, after, atEnd } = splitTextAtCaret(content);
-  const trimmedCurrent = before.trim();
-  const trailingText = after.trim();
+  const { beforeHtml, afterHtml, atEnd } = splitHtmlAtCaret(content);
+  
+  // Sanitize the HTML content
+  const sanitizedBefore = sanitizeHtml(beforeHtml);
+  const sanitizedAfter = sanitizeHtml(afterHtml);
+  
+  // Get plain text versions for checking if content is empty
+  const tempBefore = document.createElement('div');
+  tempBefore.innerHTML = sanitizedBefore;
+  const beforeText = tempBefore.textContent.trim();
+  
+  const tempAfter = document.createElement('div');
+  tempAfter.innerHTML = sanitizedAfter;
+  const afterText = tempAfter.textContent.trim();
 
   const insertNextRow = (nextTypeValue, textForNextRow) => {
     insertItemAfter(item.id, nextTypeValue, textForNextRow, (data) => {
@@ -2484,26 +2556,28 @@ function handleEnter(item, li, content) {
   };
   
   if (!atEnd) {
-    const currentText = trimmedCurrent;
-    content.textContent = currentText;
-    if (currentText) {
+    // Update current line with the content before caret (preserving HTML)
+    content.innerHTML = sanitizedBefore;
+    if (beforeText) {
       content.removeAttribute('data-placeholder');
     } else {
       content.setAttribute('data-placeholder', getPlaceholder());
     }
     const nextType = (item.type === 'heading') ? 'text' : resolveNextType(item);
-    commitAndInsert(currentText, nextType, trailingText);
+    // Pass HTML content to next row
+    commitAndInsert(sanitizedBefore, nextType, sanitizedAfter);
     return;
   }
   
-  const text = content.textContent.trim();
-  if (text) {
+  // At end of line - keep current content as is
+  const currentHtml = sanitizeHtml(content.innerHTML);
+  if (beforeText) {
     content.removeAttribute('data-placeholder');
   } else {
     content.setAttribute('data-placeholder', getPlaceholder());
   }
   const nextType = resolveNextType(item);
-  commitAndInsert(text, nextType, '');
+  commitAndInsert(currentHtml, nextType, '');
 }
 
 // Handle content blur
