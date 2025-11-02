@@ -452,3 +452,164 @@ body.reorder-mode input[type="checkbox"] {
 .task-content a:visited {
   color: #7b68ee;
 }
+
+/* Decoration preset menu */
+.decoration-preset-menu {
+  min-width: 200px;
+}
+
+.decoration-preset-item.selected {
+  background-color: #e8f4ff;
+}
+
+.context-menu-separator {
+  border-top: 1px solid #ddd;
+  margin-top: 4px;
+  padding-top: 8px;
+}
+
+/* Preset settings dialog */
+.preset-settings-overlay {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  background: rgba(0, 0, 0, 0.5);
+  z-index: 10002;
+}
+
+.preset-settings-dialog {
+  width: min(600px, calc(100vw - 32px));
+  max-height: calc(100vh - 32px);
+  overflow-y: auto;
+  background: #fff;
+  color: #222;
+  border-radius: 8px;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.3);
+  padding: 24px;
+  font-size: 14px;
+}
+
+.preset-settings-header h2 {
+  font-size: 18px;
+  font-weight: 600;
+  margin-bottom: 16px;
+  color: #1E3A5F;
+}
+
+.preset-settings-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.preset-settings-item {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  background: #f9f9f9;
+  align-items: center;
+}
+
+.preset-settings-input {
+  padding: 6px 8px;
+  font-size: 13px;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  background: #fff;
+}
+
+.preset-name-input {
+  flex: 1;
+  min-width: 150px;
+}
+
+.preset-shortcut-input {
+  width: 60px;
+  text-align: center;
+}
+
+.preset-style-options {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+
+.preset-checkbox-label {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.preset-checkbox-label input[type="checkbox"] {
+  width: 14px;
+  height: 14px;
+  margin: 0;
+}
+
+.preset-settings-color {
+  width: 40px;
+  height: 32px;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.preset-settings-actions {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  padding-top: 16px;
+  border-top: 1px solid #ddd;
+}
+
+.preset-settings-btn {
+  padding: 8px 16px;
+  font-size: 13px;
+  border-radius: 4px;
+  border: none;
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+}
+
+.preset-settings-btn-add {
+  background: #4aa3ff;
+  color: #fff;
+}
+
+.preset-settings-btn-add:hover {
+  background: #2589f5;
+}
+
+.preset-settings-btn-close {
+  background: #f2f2f2;
+  color: #333;
+}
+
+.preset-settings-btn-close:hover {
+  background: #e5e5e5;
+}
+
+.preset-settings-btn-delete {
+  background: #ff4444;
+  color: #fff;
+  padding: 4px 12px;
+  font-size: 12px;
+}
+
+.preset-settings-btn-delete:hover {
+  background: #cc0000;
+}
+
+/* Item decoration styles */
+.task-content.decorated {
+  /* Styles are applied inline based on preset */
+}

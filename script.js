@@ -1,11 +1,67 @@
-﻿// Data structure: { id, type, text, checked, order }
+﻿// Data structure: { id, type, text, checked, order, decoration }
 // type: 'text' | 'checkbox' | 'list' | 'hr' | 'heading'
+// decoration: { presetId } or null
 
 let items = [];
 let undoStack = [];
 let redoStack = [];
+let decorationPresets = [];
 
 const list = document.getElementById('todoList');
+
+// Default decoration presets
+const DEFAULT_PRESETS = [
+  { id: 'important', name: '重要', bold: true, italic: false, underline: false, color: '#FF0000', shortcut: '1' },
+  { id: 'note', name: '補足', bold: false, italic: true, underline: false, color: '#0066FF', shortcut: '2' },
+  { id: 'warning', name: '注意', bold: true, italic: false, underline: true, color: '#FF6600', shortcut: '3' },
+  { id: 'highlight', name: '強調', bold: true, italic: false, underline: false, color: '#006600', shortcut: '4' }
+];
+
+// Load presets from localStorage or use defaults
+function loadPresets() {
+  try {
+    const stored = localStorage.getItem('decorationPresets');
+    if (stored) {
+      decorationPresets = JSON.parse(stored);
+    } else {
+      decorationPresets = [...DEFAULT_PRESETS];
+      savePresets();
+    }
+  } catch (err) {
+    console.error('Failed to load presets:', err);
+    decorationPresets = [...DEFAULT_PRESETS];
+  }
+}
+
+// Save presets to localStorage
+function savePresets() {
+  try {
+    localStorage.setItem('decorationPresets', JSON.stringify(decorationPresets));
+  } catch (err) {
+    console.error('Failed to save presets:', err);
+  }
+}
+
+// Get preset by ID
+function getPreset(presetId) {
+  return decorationPresets.find(p => p.id === presetId);
+}
+
+// Apply decoration preset to item
+function applyDecorationPreset(item, presetId) {
+  if (!item) return;
+  
+  captureStateForUndo('decoration', { itemId: item.id, oldDecoration: item.decoration });
+  
+  if (presetId === null || presetId === 'none') {
+    item.decoration = null;
+  } else {
+    item.decoration = { presetId };
+  }
+  
+  updateItem(item.id, { decoration: item.decoration }, undefined, { skipReload: true });
+  render();
+}
 
 // Undo/Redo system
 function captureStateForUndo(actionType, data) {
@@ -86,19 +142,6 @@ function performRedo() {
 
 
 const LINK_DETECTION_REGEX = /(?:https?:\/\/[^\s<>"']+|[A-Za-z]:[\\/][^\s<>"']+|\\\\[^\s<>"']+)/gi;
-const TEXT_COLOR_OPTIONS = [
-  { id: 'default', label: '標準', color: '', shortcut: 'S' },
-  { id: 'red', label: '赤', color: '#FF0000', shortcut: 'R' },
-  { id: 'blue', label: '青', color: '#3300FF', shortcut: 'B' },
-  { id: 'orange', label: '緑', color: '#006600', shortcut: 'G' }
-];
-
-const TEXT_COLOR_MAP = TEXT_COLOR_OPTIONS.reduce((acc, option) => {
-  if (option.color) {
-    acc[option.id] = option.color;
-  }
-  return acc;
-}, {});
 
 function addItemFromServer(data) {
   if (!data || typeof data.id === 'undefined') return;
@@ -117,7 +160,8 @@ function addItemFromServer(data) {
     type: data.type || 'text',
     text: data.text || '',
     checked: Number(data.done) === 1,
-    order: newOrder
+    order: newOrder,
+    decoration: data.decoration || null
   };
   
   items.push(newItem);
@@ -755,7 +799,8 @@ function loadItems(callback) {
         type: row.type || 'text',
         text: row.text || '',
         checked: Number(row.done) === 1,
-        order: row.sort_order || 0
+        order: row.sort_order || 0,
+        decoration: row.decoration ? JSON.parse(row.decoration) : null
       }));
       render();
       if (typeof callback === 'function') callback();
@@ -847,7 +892,7 @@ function updateItem(id, updates, callback, options = {}) {
     return;
   }
   
-  // Handle text or type updates via edit endpoint
+  // Handle text or type or decoration updates via edit endpoint
   const params = new URLSearchParams({id: id.toString()});
   let preparedText;
   
@@ -862,6 +907,10 @@ function updateItem(id, updates, callback, options = {}) {
     params.append('type', updates.type);
   }
   
+  if (updates.decoration !== undefined) {
+    params.append('decoration', updates.decoration ? JSON.stringify(updates.decoration) : '');
+  }
+  
   fetch('api.php?action=edit', {
     method: 'POST',
     headers: {'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8'},
@@ -874,6 +923,9 @@ function updateItem(id, updates, callback, options = {}) {
       }
       if (updates.type !== undefined) {
         item.type = updates.type;
+      }
+      if (updates.decoration !== undefined) {
+        item.decoration = updates.decoration;
       }
       if (typeof callback === 'function') {
         callback();
@@ -1113,16 +1165,18 @@ function applyColorChoice(colorId) {
   closeColorMenu();
 }
 
-// Handle context menu for hyperlinks and formatting
+// Handle context menu for decoration presets and hyperlinks
 function handleContextMenu(e, content, item) {
-  closeColorMenu();
   const selection = window.getSelection();
   const selectedText = selection ? selection.toString().trim() : '';
   const anchorTarget = findAnchorFromEventTarget(e.target);
   const hasAnchorTarget = !!anchorTarget;
   
+  // Show context menu for text selection (hyperlink) or existing hyperlink
   if (!selectedText && !hasAnchorTarget) {
-    savedSelection = null;
+    // No selection and no hyperlink - show decoration preset menu
+    e.preventDefault();
+    showDecorationPresetsMenu(e, item);
     return;
   }
   
@@ -1146,35 +1200,6 @@ function handleContextMenu(e, content, item) {
   
   const menuItems = [];
   if (selectedText) {
-    menuItems.push({
-      label: '太字',
-      shortcut: 'Ctrl+B',
-      action: () => {
-        removeContextMenu();
-        if (!restoreSelectionForContent(content)) return;
-        if (toggleBoldSelection(content)) {
-          commitFormattingChange(content, item, { keepSelection: true });
-        }
-      }
-    });
-    menuItems.push({
-      label: '色を変更',
-      shortcut: 'Ctrl+Q',
-      action: () => {
-        const menuRect = contextMenu ? contextMenu.getBoundingClientRect() : null;
-        const scrollX = window.pageXOffset || window.scrollX || 0;
-        const scrollY = window.pageYOffset || window.scrollY || 0;
-        const position = menuRect
-          ? {
-              x: menuRect.right + scrollX + 8,
-              y: menuRect.top + scrollY
-            }
-          : { x: e.pageX + 8, y: e.pageY };
-        removeContextMenu();
-        if (!restoreSelectionForContent(content)) return;
-        openColorMenu(position, content, item);
-      }
-    });
     menuItems.push({
       label: 'ハイパーリンクを追加',
       shortcut: 'Ctrl+K',
@@ -1246,6 +1271,289 @@ function handleContextMenu(e, content, item) {
     }
   };
   setTimeout(() => document.addEventListener('click', closeMenu), 0);
+}
+
+// Show decoration presets menu
+function showDecorationPresetsMenu(e, item) {
+  if (contextMenu) {
+    contextMenu.remove();
+  }
+  contextMenu = null;
+  
+  contextMenu = document.createElement('div');
+  contextMenu.className = 'hyperlink-context-menu decoration-preset-menu';
+  
+  // Add "None" option to remove decoration
+  const noneItem = document.createElement('div');
+  noneItem.className = 'context-menu-item';
+  if (!item.decoration) {
+    noneItem.classList.add('selected');
+  }
+  
+  const noneLabel = document.createElement('span');
+  noneLabel.className = 'context-menu-item-label';
+  noneLabel.textContent = '装飾なし';
+  noneItem.appendChild(noneLabel);
+  
+  noneItem.addEventListener('click', () => {
+    applyDecorationPreset(item, null);
+    removeContextMenu();
+  });
+  contextMenu.appendChild(noneItem);
+  
+  // Add preset options
+  decorationPresets.forEach(preset => {
+    const menuItem = document.createElement('div');
+    menuItem.className = 'context-menu-item decoration-preset-item';
+    
+    const isSelected = item.decoration && item.decoration.presetId === preset.id;
+    if (isSelected) {
+      menuItem.classList.add('selected');
+    }
+    
+    const labelSpan = document.createElement('span');
+    labelSpan.className = 'context-menu-item-label';
+    labelSpan.textContent = preset.name;
+    
+    // Apply decoration styles to label for preview
+    if (preset.bold) labelSpan.style.fontWeight = 'bold';
+    if (preset.italic) labelSpan.style.fontStyle = 'italic';
+    if (preset.underline) labelSpan.style.textDecoration = 'underline';
+    if (preset.color) labelSpan.style.color = preset.color;
+    
+    menuItem.appendChild(labelSpan);
+    
+    if (preset.shortcut) {
+      const shortcutSpan = document.createElement('span');
+      shortcutSpan.className = 'context-menu-shortcut';
+      shortcutSpan.textContent = `Ctrl+${preset.shortcut}`;
+      menuItem.appendChild(shortcutSpan);
+    }
+    
+    menuItem.addEventListener('click', () => {
+      applyDecorationPreset(item, preset.id);
+      removeContextMenu();
+    });
+    contextMenu.appendChild(menuItem);
+  });
+  
+  // Add settings button
+  const settingsItem = document.createElement('div');
+  settingsItem.className = 'context-menu-item context-menu-separator';
+  settingsItem.style.borderTop = '1px solid #ddd';
+  settingsItem.style.marginTop = '4px';
+  settingsItem.style.paddingTop = '8px';
+  
+  const settingsLabel = document.createElement('span');
+  settingsLabel.className = 'context-menu-item-label';
+  settingsLabel.textContent = '装飾設定...';
+  settingsItem.appendChild(settingsLabel);
+  
+  settingsItem.addEventListener('click', () => {
+    removeContextMenu();
+    openPresetSettings();
+  });
+  contextMenu.appendChild(settingsItem);
+  
+  contextMenu.style.left = `${e.pageX}px`;
+  contextMenu.style.top = `${e.pageY}px`;
+  
+  document.body.appendChild(contextMenu);
+  
+  function removeContextMenu() {
+    if (contextMenu) {
+      contextMenu.remove();
+      contextMenu = null;
+    }
+    document.removeEventListener('click', closeMenu);
+  }
+  
+  const closeMenu = (event) => {
+    if (contextMenu && !contextMenu.contains(event.target)) {
+      removeContextMenu();
+    }
+  };
+  setTimeout(() => document.addEventListener('click', closeMenu), 0);
+}
+
+// Open preset settings dialog
+function openPresetSettings() {
+  // Create overlay
+  const overlay = document.createElement('div');
+  overlay.className = 'preset-settings-overlay';
+  overlay.setAttribute('role', 'dialog');
+  overlay.setAttribute('aria-modal', 'true');
+  overlay.setAttribute('aria-label', '装飾プリセット設定');
+  
+  // Create dialog
+  const dialog = document.createElement('div');
+  dialog.className = 'preset-settings-dialog';
+  
+  // Header
+  const header = document.createElement('div');
+  header.className = 'preset-settings-header';
+  header.innerHTML = '<h2>装飾プリセット設定</h2>';
+  dialog.appendChild(header);
+  
+  // Preset list
+  const listContainer = document.createElement('div');
+  listContainer.className = 'preset-settings-list';
+  
+  decorationPresets.forEach((preset, index) => {
+    const presetItem = createPresetItem(preset, index);
+    listContainer.appendChild(presetItem);
+  });
+  
+  dialog.appendChild(listContainer);
+  
+  // Buttons
+  const actions = document.createElement('div');
+  actions.className = 'preset-settings-actions';
+  
+  const addBtn = document.createElement('button');
+  addBtn.textContent = '+ 新しいプリセット';
+  addBtn.className = 'preset-settings-btn preset-settings-btn-add';
+  addBtn.addEventListener('click', () => {
+    addNewPreset(listContainer);
+  });
+  actions.appendChild(addBtn);
+  
+  const closeBtn = document.createElement('button');
+  closeBtn.textContent = '閉じる';
+  closeBtn.className = 'preset-settings-btn preset-settings-btn-close';
+  closeBtn.addEventListener('click', () => {
+    overlay.remove();
+  });
+  actions.appendChild(closeBtn);
+  
+  dialog.appendChild(actions);
+  overlay.appendChild(dialog);
+  document.body.appendChild(overlay);
+  
+  // Close on overlay click
+  overlay.addEventListener('click', (e) => {
+    if (e.target === overlay) {
+      overlay.remove();
+    }
+  });
+}
+
+function createPresetItem(preset, index) {
+  const item = document.createElement('div');
+  item.className = 'preset-settings-item';
+  
+  // Name input
+  const nameInput = document.createElement('input');
+  nameInput.type = 'text';
+  nameInput.value = preset.name;
+  nameInput.className = 'preset-settings-input preset-name-input';
+  nameInput.placeholder = 'プリセット名';
+  nameInput.addEventListener('change', () => {
+    preset.name = nameInput.value;
+    savePresets();
+    render();
+  });
+  item.appendChild(nameInput);
+  
+  // Style checkboxes
+  const styleContainer = document.createElement('div');
+  styleContainer.className = 'preset-style-options';
+  
+  const boldCheck = createCheckbox('太字', preset.bold, (checked) => {
+    preset.bold = checked;
+    savePresets();
+    render();
+  });
+  styleContainer.appendChild(boldCheck);
+  
+  const italicCheck = createCheckbox('斜体', preset.italic, (checked) => {
+    preset.italic = checked;
+    savePresets();
+    render();
+  });
+  styleContainer.appendChild(italicCheck);
+  
+  const underlineCheck = createCheckbox('下線', preset.underline, (checked) => {
+    preset.underline = checked;
+    savePresets();
+    render();
+  });
+  styleContainer.appendChild(underlineCheck);
+  
+  item.appendChild(styleContainer);
+  
+  // Color picker
+  const colorInput = document.createElement('input');
+  colorInput.type = 'color';
+  colorInput.value = preset.color || '#000000';
+  colorInput.className = 'preset-settings-color';
+  colorInput.addEventListener('change', () => {
+    preset.color = colorInput.value;
+    savePresets();
+    render();
+  });
+  item.appendChild(colorInput);
+  
+  // Shortcut input
+  const shortcutInput = document.createElement('input');
+  shortcutInput.type = 'text';
+  shortcutInput.value = preset.shortcut || '';
+  shortcutInput.className = 'preset-settings-input preset-shortcut-input';
+  shortcutInput.placeholder = 'ショートカットキー';
+  shortcutInput.maxLength = 1;
+  shortcutInput.addEventListener('change', () => {
+    preset.shortcut = shortcutInput.value.toUpperCase();
+    savePresets();
+  });
+  item.appendChild(shortcutInput);
+  
+  // Delete button
+  const deleteBtn = document.createElement('button');
+  deleteBtn.textContent = '削除';
+  deleteBtn.className = 'preset-settings-btn preset-settings-btn-delete';
+  deleteBtn.addEventListener('click', () => {
+    if (confirm(`プリセット「${preset.name}」を削除しますか？`)) {
+      decorationPresets.splice(index, 1);
+      savePresets();
+      render();
+      item.remove();
+    }
+  });
+  item.appendChild(deleteBtn);
+  
+  return item;
+}
+
+function createCheckbox(label, checked, onChange) {
+  const container = document.createElement('label');
+  container.className = 'preset-checkbox-label';
+  
+  const checkbox = document.createElement('input');
+  checkbox.type = 'checkbox';
+  checkbox.checked = checked;
+  checkbox.addEventListener('change', () => onChange(checkbox.checked));
+  
+  container.appendChild(checkbox);
+  container.appendChild(document.createTextNode(label));
+  
+  return container;
+}
+
+function addNewPreset(listContainer) {
+  const newPreset = {
+    id: 'preset_' + Date.now(),
+    name: '新しいプリセット',
+    bold: false,
+    italic: false,
+    underline: false,
+    color: '#000000',
+    shortcut: ''
+  };
+  decorationPresets.push(newPreset);
+  savePresets();
+  
+  const presetItem = createPresetItem(newPreset, decorationPresets.length - 1);
+  listContainer.appendChild(presetItem);
 }
 
 // Validate URL to prevent XSS attacks
@@ -1895,19 +2203,15 @@ function closeHyperlinkDialog() {
 function sanitizeContentInPlace(root) {
   if (!root) return '';
 
-  // Normalize bold elements
+  // Remove old character-level formatting (bold, color spans)
   const boldElements = Array.from(root.querySelectorAll('b, strong'));
   boldElements.forEach(el => {
-    let target = el;
-    if (el.tagName === 'B') {
-      const strong = document.createElement('strong');
-      while (el.firstChild) {
-        strong.appendChild(el.firstChild);
-      }
-      el.replaceWith(strong);
-      target = strong;
-    }
-    Array.from(target.attributes).forEach(attr => target.removeAttribute(attr.name));
+    unwrapElement(el);
+  });
+
+  const spanNodes = Array.from(root.querySelectorAll('span'));
+  spanNodes.forEach(span => {
+    unwrapElement(span);
   });
 
   // Sanitize anchors
@@ -1921,24 +2225,6 @@ function sanitizeContentInPlace(root) {
     }
   });
 
-  // Sanitize color spans
-  const spanNodes = Array.from(root.querySelectorAll('span'));
-  spanNodes.forEach(span => {
-    const colorId = span.getAttribute('data-text-color');
-    if (colorId && TEXT_COLOR_MAP[colorId]) {
-      Array.from(span.attributes).forEach(attr => {
-        if (attr.name !== 'data-text-color' && attr.name !== 'style') {
-          span.removeAttribute(attr.name);
-        }
-      });
-      span.style.color = TEXT_COLOR_MAP[colorId];
-    } else {
-      span.removeAttribute('data-text-color');
-      span.removeAttribute('style');
-      unwrapElement(span);
-    }
-  });
-
   // Remove other disallowed elements
   const walker = document.createTreeWalker(root, NodeFilter.SHOW_ELEMENT, null);
   const toClean = [];
@@ -1946,18 +2232,13 @@ function sanitizeContentInPlace(root) {
   while ((node = walker.nextNode()) !== null) {
     if (node === root) continue;
     const tag = node.tagName;
-    const allowSpan = tag === 'SPAN' && node.getAttribute('data-text-color');
-    if (tag === 'A' || tag === 'STRONG' || allowSpan) {
+    if (tag === 'A') {
       continue;
     }
     toClean.push(node);
   }
   toClean.forEach(node => {
-    if (node.tagName === 'SPAN') {
-      unwrapElement(node);
-    } else {
-      node.replaceWith(document.createTextNode(node.textContent));
-    }
+    node.replaceWith(document.createTextNode(node.textContent));
   });
 
   return root.innerHTML;
@@ -1985,37 +2266,17 @@ function sanitizeHtml(html) {
     }
   });
   
+  // Remove old character-level formatting (bold, color spans)
+  // since we now use item-level decoration
   const boldElements = temp.querySelectorAll('b, strong');
   boldElements.forEach(el => {
-    let target = el;
-    if (el.tagName === 'B') {
-      const strong = document.createElement('strong');
-      while (el.firstChild) {
-        strong.appendChild(el.firstChild);
-      }
-      el.replaceWith(strong);
-      target = strong;
-    }
-    Array.from(target.attributes).forEach(attr => target.removeAttribute(attr.name));
+    unwrapElement(el);
   });
   
   const spanElements = Array.from(temp.querySelectorAll('span'));
   spanElements.forEach(span => {
-    const colorId = span.getAttribute('data-text-color');
-    if (colorId && TEXT_COLOR_MAP[colorId]) {
-      const hex = TEXT_COLOR_MAP[colorId];
-      Array.from(span.getAttributeNames()).forEach(attr => {
-        if (attr !== 'data-text-color' && attr !== 'style') {
-          span.removeAttribute(attr);
-        }
-      });
-      span.setAttribute('data-text-color', colorId);
-      span.style.color = hex;
-    } else {
-      span.removeAttribute('data-text-color');
-      span.removeAttribute('style');
-      unwrapElement(span);
-    }
+    // Remove all formatting spans - we use item-level decoration now
+    unwrapElement(span);
   });
   
   const walker = document.createTreeWalker(temp, NodeFilter.SHOW_ELEMENT);
@@ -2209,6 +2470,19 @@ function renderItem(item) {
   content.contentEditable = 'true';
   content.setAttribute('role', 'textbox');
   content.setAttribute('aria-label', getAriaLabel(item.type));
+  
+  // Apply decoration if present
+  if (item.decoration && item.decoration.presetId) {
+    const preset = getPreset(item.decoration.presetId);
+    if (preset) {
+      if (preset.bold) content.style.fontWeight = 'bold';
+      if (preset.italic) content.style.fontStyle = 'italic';
+      if (preset.underline) content.style.textDecoration = 'underline';
+      if (preset.color) content.style.color = preset.color;
+      content.classList.add('decorated');
+    }
+  }
+  
   // Use innerHTML to support hyperlinks, with sanitization to prevent XSS
   if (item.text) {
     // Check if text contains HTML tags
@@ -2389,32 +2663,25 @@ function handleKeyDown(e, content, item, li) {
   const isModifier = (e.ctrlKey || e.metaKey) && !e.altKey;
   if (isModifier && !e.shiftKey) {
     const key = e.key.toLowerCase();
-    if (key === 'b') {
+    
+    // Check for decoration preset shortcuts
+    const preset = decorationPresets.find(p => p.shortcut && p.shortcut.toLowerCase() === key);
+    if (preset) {
       e.preventDefault();
-      closeColorMenu();
-      if (toggleBoldSelection(content)) {
-        commitFormattingChange(content, item, { keepSelection: true });
-      }
+      applyDecorationPreset(item, preset.id);
       return;
     }
-    if (key === 'q') {
+    
+    // Ctrl+0 to remove decoration
+    if (key === '0') {
       e.preventDefault();
-      const range = getSelectionRangeWithinContent(content);
-      if (!range) return;
-      saveSelectionSnapshot(window.getSelection(), content);
-      const rect = range.getBoundingClientRect();
-      const scrollX = window.pageXOffset || window.scrollX || 0;
-      const scrollY = window.pageYOffset || window.scrollY || 0;
-      const position = {
-        x: rect.right + scrollX + 8,
-        y: rect.top + scrollY
-      };
-      openColorMenu(position, content, item);
+      applyDecorationPreset(item, null);
       return;
     }
+    
+    // Keep Ctrl+K for hyperlink
     if (key === 'k') {
       e.preventDefault();
-      closeColorMenu();
       const range = getSelectionRangeWithinContent(content);
       if (!range) return;
       saveSelectionSnapshot(window.getSelection(), content);
@@ -2949,6 +3216,7 @@ function handleDrop(e) {
 
 // Initialize
 window.addEventListener('load', () => {
+  loadPresets();
   loadItems();
   
   // Setup reorder toggle button
