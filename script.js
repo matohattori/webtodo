@@ -630,13 +630,27 @@ function applyColorToSelection(content, colorId) {
   if (!range) return false;
   
   if (colorId === 'default') {
+    // Save range offsets before clearing
+    const offsets = getRangeOffsetsWithin(content, range);
     clearColorRange(content, range);
+    content.normalize();
+    
+    // Reconstruct range using saved offsets
+    const startPoint = resolveOffsetToRangePoint(content, offsets.start);
+    const endPoint = resolveOffsetToRangePoint(content, offsets.end);
+    if (!startPoint || !endPoint || !startPoint.node || !endPoint.node) {
+      return false;
+    }
+    
+    const newRange = document.createRange();
+    newRange.setStart(startPoint.node, startPoint.offset);
+    newRange.setEnd(endPoint.node, endPoint.offset);
+    
     const selection = window.getSelection();
     if (selection) {
       selection.removeAllRanges();
-      selection.addRange(range);
+      selection.addRange(newRange);
     }
-    content.normalize();
     return true;
   }
   
