@@ -632,6 +632,10 @@ function applyColorToSelection(content, colorId) {
   if (colorId === 'default') {
     // Save range offsets before clearing
     const offsets = getRangeOffsetsWithin(content, range);
+    if (typeof offsets.start !== 'number' || typeof offsets.end !== 'number') {
+      return false;
+    }
+    
     clearColorRange(content, range);
     content.normalize();
     
@@ -642,16 +646,21 @@ function applyColorToSelection(content, colorId) {
       return false;
     }
     
-    const newRange = document.createRange();
-    newRange.setStart(startPoint.node, startPoint.offset);
-    newRange.setEnd(endPoint.node, endPoint.offset);
-    
-    const selection = window.getSelection();
-    if (selection) {
-      selection.removeAllRanges();
-      selection.addRange(newRange);
+    try {
+      const newRange = document.createRange();
+      newRange.setStart(startPoint.node, startPoint.offset);
+      newRange.setEnd(endPoint.node, endPoint.offset);
+      
+      const selection = window.getSelection();
+      if (selection) {
+        selection.removeAllRanges();
+        selection.addRange(newRange);
+      }
+      return true;
+    } catch (err) {
+      console.warn('Failed to restore selection after color removal:', err);
+      return false;
     }
-    return true;
   }
   
   const hex = TEXT_COLOR_MAP[colorId];
