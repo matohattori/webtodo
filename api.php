@@ -34,6 +34,9 @@ if (!in_array('sort_order', $columns)) {
 if (!in_array('parent_id', $columns)) {
   $db->exec('ALTER TABLE todos ADD COLUMN parent_id INTEGER DEFAULT NULL');
 }
+if (!in_array('decoration', $columns)) {
+  $db->exec('ALTER TABLE todos ADD COLUMN decoration TEXT DEFAULT NULL');
+}
 $action = $_GET['action'] ?? '';
 
 function open_url_with_os(string $url): bool {
@@ -73,7 +76,7 @@ function open_url_with_os(string $url): bool {
 
 switch ($action) {
   case 'list':
-    $res = $db->query('SELECT id, text, done, type, sort_order, parent_id FROM todos ORDER BY sort_order ASC, id ASC');
+    $res = $db->query('SELECT id, text, done, type, sort_order, parent_id, decoration FROM todos ORDER BY sort_order ASC, id ASC');
     $rows = [];
     while ($row = $res->fetchArray(SQLITE3_ASSOC)) { $rows[] = $row; }
     header('Content-Type: application/json; charset=utf-8');
@@ -137,6 +140,8 @@ switch ($action) {
     $text = $textProvided ? trim((string)$_POST['text']) : '';
     $typeProvided = array_key_exists('type', $_POST);
     $type = $typeProvided ? (string)$_POST['type'] : '';
+    $decorationProvided = array_key_exists('decoration', $_POST);
+    $decoration = $decorationProvided ? $_POST['decoration'] : null;
     
     if ($id) {
       // Build dynamic SQL based on what fields are being updated
@@ -150,6 +155,10 @@ switch ($action) {
       if ($typeProvided && $type !== '') {
         $updates[] = 'type = :type';
         $params[':type'] = [$type, SQLITE3_TEXT];
+      }
+      if ($decorationProvided) {
+        $updates[] = 'decoration = :decoration';
+        $params[':decoration'] = [$decoration, SQLITE3_TEXT];
       }
       
       if (count($updates) > 0) {
