@@ -9,6 +9,25 @@ let decorationPresets = [];
 
 const list = document.getElementById('todoList');
 
+// Text color options for character-level formatting
+const TEXT_COLOR_OPTIONS = [
+  { id: 'default', label: 'デフォルト', color: null, shortcut: '0' },
+  { id: 'red', label: '赤', color: '#FF0000', shortcut: 'R' },
+  { id: 'blue', label: '青', color: '#0066FF', shortcut: 'B' },
+  { id: 'green', label: '緑', color: '#00AA00', shortcut: 'G' },
+  { id: 'yellow', label: '黄', color: '#FFAA00', shortcut: 'Y' },
+  { id: 'purple', label: '紫', color: '#9933FF', shortcut: 'P' }
+];
+
+// Text color map for quick lookup
+const TEXT_COLOR_MAP = {
+  'red': '#FF0000',
+  'blue': '#0066FF',
+  'green': '#00AA00',
+  'yellow': '#FFAA00',
+  'purple': '#9933FF'
+};
+
 // Default decoration presets
 const DEFAULT_PRESETS = [
   { id: 'important', name: '重要', bold: true, italic: false, color: '#FF0000', shortcut: '1' }
@@ -2276,19 +2295,17 @@ function closeHyperlinkDialog() {
   hyperlinkDialogPreviousActiveElement = null;
 }
 
-// Sanitize HTML to only allow anchor tags with safe attributes
+// Sanitize HTML to only allow anchor tags and character-level formatting with safe attributes
 function sanitizeContentInPlace(root) {
   if (!root) return '';
 
-  // Remove old character-level formatting (bold, color spans)
-  const boldElements = Array.from(root.querySelectorAll('b, strong'));
-  boldElements.forEach(el => {
-    unwrapElement(el);
-  });
-
+  // Remove disallowed span elements (keep spans with data-text-color for character-level formatting)
   const spanNodes = Array.from(root.querySelectorAll('span'));
   spanNodes.forEach(span => {
-    unwrapElement(span);
+    // Preserve spans with data-text-color attribute (character-level color formatting)
+    if (!span.getAttribute('data-text-color')) {
+      unwrapElement(span);
+    }
   });
 
   // Sanitize anchors
@@ -2302,20 +2319,27 @@ function sanitizeContentInPlace(root) {
     }
   });
 
-  // Remove other disallowed elements
+  // Remove other disallowed elements (preserve A, STRONG, and SPAN with data-text-color)
   const walker = document.createTreeWalker(root, NodeFilter.SHOW_ELEMENT, null);
   const toClean = [];
   let node;
   while ((node = walker.nextNode()) !== null) {
     if (node === root) continue;
     const tag = node.tagName;
-    if (tag === 'A') {
+    if (tag === 'A' || tag === 'STRONG') {
+      continue;
+    }
+    if (tag === 'SPAN' && node.getAttribute('data-text-color')) {
       continue;
     }
     toClean.push(node);
   }
   toClean.forEach(node => {
-    node.replaceWith(document.createTextNode(node.textContent));
+    if (node.tagName === 'SPAN' || node.tagName === 'STRONG') {
+      unwrapElement(node);
+    } else {
+      node.replaceWith(document.createTextNode(node.textContent));
+    }
   });
 
   return root.innerHTML;
@@ -2343,17 +2367,13 @@ function sanitizeHtml(html) {
     }
   });
   
-  // Remove old character-level formatting (bold, color spans)
-  // since we now use item-level decoration
-  const boldElements = temp.querySelectorAll('b, strong');
-  boldElements.forEach(el => {
-    unwrapElement(el);
-  });
-  
+  // Remove disallowed span elements (keep spans with data-text-color for character-level formatting)
   const spanElements = Array.from(temp.querySelectorAll('span'));
   spanElements.forEach(span => {
-    // Remove all formatting spans - we use item-level decoration now
-    unwrapElement(span);
+    // Preserve spans with data-text-color attribute (character-level color formatting)
+    if (!span.getAttribute('data-text-color')) {
+      unwrapElement(span);
+    }
   });
   
   const walker = document.createTreeWalker(temp, NodeFilter.SHOW_ELEMENT);
@@ -2765,6 +2785,26 @@ function handleKeyDown(e, content, item, li) {
       promptForHyperlink(content, item);
       return;
     }
+    
+    // Ctrl+B for bold selection
+    if (key === 'b') {
+      e.preventDefault();
+      if (toggleBoldSelection(content)) {
+        commitFormattingChange(content, item, { keepSelection: true });
+      }
+      return;
+    }
+  }
+  // Ctrl+Shift+C for color menu
+  if (isModifier && e.shiftKey && e.key.toLowerCase() === 'c') {
+    e.preventDefault();
+    const range = getSelectionRangeWithinContent(content);
+    if (!range) return;
+    saveSelectionSnapshot(window.getSelection(), content);
+    const rect = range.getBoundingClientRect();
+    const position = { x: rect.left + window.scrollX, y: rect.bottom + window.scrollY };
+    openColorMenu(position, content, item);
+    return;
   }
   if (e.key === 'Enter' && !e.shiftKey) {
     e.preventDefault();
