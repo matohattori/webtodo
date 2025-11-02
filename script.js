@@ -105,7 +105,7 @@ function applyDecorationPreset(item, presetId) {
     }
   }
   
-  updateItem(item.id, { decoration: item.decoration }, undefined, { skipReload: true });
+  updateItem(item.id, { decoration: item.decoration }, undefined, { skipReload: true, skipUndoCapture: true });
 }
 
 // Undo/Redo system
