@@ -630,14 +630,37 @@ function applyColorToSelection(content, colorId) {
   if (!range) return false;
   
   if (colorId === 'default') {
-    clearColorRange(content, range);
-    const selection = window.getSelection();
-    if (selection) {
-      selection.removeAllRanges();
-      selection.addRange(range);
+    // Save range offsets before clearing
+    const offsets = getRangeOffsetsWithin(content, range);
+    if (typeof offsets.start !== 'number' || typeof offsets.end !== 'number') {
+      return false;
     }
+    
+    clearColorRange(content, range);
     content.normalize();
-    return true;
+    
+    // Reconstruct range using saved offsets
+    const startPoint = resolveOffsetToRangePoint(content, offsets.start);
+    const endPoint = resolveOffsetToRangePoint(content, offsets.end);
+    if (!startPoint || !endPoint || !startPoint.node || !endPoint.node) {
+      return false;
+    }
+    
+    try {
+      const newRange = document.createRange();
+      newRange.setStart(startPoint.node, startPoint.offset);
+      newRange.setEnd(endPoint.node, endPoint.offset);
+      
+      const selection = window.getSelection();
+      if (selection) {
+        selection.removeAllRanges();
+        selection.addRange(newRange);
+      }
+      return true;
+    } catch (err) {
+      console.warn('Failed to restore selection after color removal:', err);
+      return false;
+    }
   }
   
   const hex = TEXT_COLOR_MAP[colorId];
@@ -675,7 +698,6 @@ function applyColorToSelection(content, colorId) {
   if (selection) {
     const finalRange = document.createRange();
     finalRange.selectNodeContents(span);
-    finalRange.collapse(false); // Collapse to end to avoid issues when pressing Enter immediately
     selection.removeAllRanges();
     selection.addRange(finalRange);
   }
@@ -705,14 +727,6 @@ function commitFormattingChange(content, item, options = {}) {
       savedSelection = selectionSnapshot;
       restoreSelectionForContent(content);
       refreshSavedSelection(content);
-      // Collapse selection to end after formatting to avoid issues when pressing Enter immediately
-      const sel = window.getSelection();
-      if (sel && sel.rangeCount > 0) {
-        const range = sel.getRangeAt(0);
-        range.collapse(false); // Collapse to end
-        sel.removeAllRanges();
-        sel.addRange(range);
-      }
     }
   };
 
@@ -2079,11 +2093,11 @@ function insertHyperlink(content, item, url) {
     savedSelection.range.deleteContents();
     savedSelection.range.insertNode(anchor);
     
-    // Move cursor after the link
-    savedSelection.range.setStartAfter(anchor);
-    savedSelection.range.setEndAfter(anchor);
+    // Select the newly created link
+    const newRange = document.createRange();
+    newRange.selectNodeContents(anchor);
     selection.removeAllRanges();
-    selection.addRange(savedSelection.range);
+    selection.addRange(newRange);
     
     // Sanitize and update the item text with the new HTML content
     const sanitizedContent = sanitizeHtml(content.innerHTML);
@@ -2108,7 +2122,6 @@ function removeHyperlink(anchor, content, item) {
   if (selection) {
     const newRange = document.createRange();
     newRange.selectNodeContents(textNode);
-    newRange.collapse(false);
     selection.removeAllRanges();
     selection.addRange(newRange);
   }
