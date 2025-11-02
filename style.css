@@ -426,6 +426,16 @@ body.reorder-mode input[type="checkbox"] {
   flex: 1;
 }
 
+.context-color-shortcut {
+  font-size: 10px;
+  color: #aaa;
+  margin-left: 8px;
+}
+
+.context-color-option.selected {
+  background-color: #e8f4ff;
+}
+
 /* Hyperlink styling */
 .task-content a {
   color: #4aa3ff;
