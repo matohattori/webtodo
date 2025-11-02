@@ -526,13 +526,25 @@ body.reorder-mode input[type="checkbox"] {
 }
 
 .preset-name-input {
-  flex: 1;
-  min-width: 150px;
+  width: 6em;
+  min-width: 6em;
+}
+
+.preset-shortcut-container {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.preset-shortcut-prefix {
+  font-size: 12px;
+  color: #666;
 }
 
 .preset-shortcut-input {
-  width: 60px;
+  width: 1.5em;
   text-align: center;
+  padding: 6px 4px;
 }
 
 .preset-style-options {
@@ -555,12 +567,31 @@ body.reorder-mode input[type="checkbox"] {
   margin: 0;
 }
 
-.preset-settings-color {
-  width: 40px;
-  height: 32px;
-  border: 1px solid #ccc;
+.preset-color-palette {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+  max-width: 200px;
+}
+
+.preset-color-btn {
+  width: 24px;
+  height: 24px;
+  border: 2px solid transparent;
   border-radius: 4px;
   cursor: pointer;
+  padding: 0;
+  transition: border-color 0.15s ease, transform 0.15s ease;
+}
+
+.preset-color-btn:hover {
+  transform: scale(1.1);
+  border-color: #4aa3ff;
+}
+
+.preset-color-btn.selected {
+  border-color: #4aa3ff;
+  box-shadow: 0 0 0 2px rgba(74, 163, 255, 0.3);
 }
 
 .preset-settings-actions {
@@ -583,6 +614,12 @@ body.reorder-mode input[type="checkbox"] {
 .preset-settings-btn-add {
   background: #4aa3ff;
   color: #fff;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  font-size: 20px;
+  line-height: 1;
+  border-radius: 50%;
 }
 
 .preset-settings-btn-add:hover {

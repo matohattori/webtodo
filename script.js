@@ -1295,6 +1295,11 @@ function showDecorationPresetsMenu(e, item) {
   noneLabel.textContent = '装飾なし';
   noneItem.appendChild(noneLabel);
   
+  const noneShortcut = document.createElement('span');
+  noneShortcut.className = 'context-menu-shortcut';
+  noneShortcut.textContent = 'Ctrl+0';
+  noneItem.appendChild(noneShortcut);
+  
   noneItem.addEventListener('click', () => {
     applyDecorationPreset(item, null);
     removeContextMenu();
@@ -1392,7 +1397,7 @@ function openPresetSettings() {
   // Header
   const header = document.createElement('div');
   header.className = 'preset-settings-header';
-  header.innerHTML = '<h2>装飾プリセット設定</h2>';
+  header.innerHTML = '<h2>装飾設定</h2>';
   dialog.appendChild(header);
   
   // Preset list
@@ -1411,8 +1416,9 @@ function openPresetSettings() {
   actions.className = 'preset-settings-actions';
   
   const addBtn = document.createElement('button');
-  addBtn.textContent = '+ 新しいプリセット';
+  addBtn.textContent = '+';
   addBtn.className = 'preset-settings-btn preset-settings-btn-add';
+  addBtn.setAttribute('title', '新しいプリセットを追加');
   addBtn.addEventListener('click', () => {
     addNewPreset(listContainer);
   });
@@ -1447,7 +1453,7 @@ function createPresetItem(preset, index) {
   nameInput.type = 'text';
   nameInput.value = preset.name;
   nameInput.className = 'preset-settings-input preset-name-input';
-  nameInput.placeholder = 'プリセット名';
+  nameInput.placeholder = '装飾名を入力';
   nameInput.addEventListener('change', () => {
     preset.name = nameInput.value;
     savePresets();
@@ -1482,30 +1488,56 @@ function createPresetItem(preset, index) {
   
   item.appendChild(styleContainer);
   
-  // Color picker
-  const colorInput = document.createElement('input');
-  colorInput.type = 'color';
-  colorInput.value = preset.color || '#000000';
-  colorInput.className = 'preset-settings-color';
-  colorInput.addEventListener('change', () => {
-    preset.color = colorInput.value;
-    savePresets();
-    render();
-  });
-  item.appendChild(colorInput);
+  // Color palette selector
+  const colorPalette = document.createElement('div');
+  colorPalette.className = 'preset-color-palette';
   
-  // Shortcut input
+  const commonColors = ['#FF0000', '#FF6600', '#FFCC00', '#00FF00', '#0066FF', '#6600FF', '#FF00FF', '#000000', '#666666', '#CCCCCC'];
+  
+  commonColors.forEach(color => {
+    const colorBtn = document.createElement('button');
+    colorBtn.type = 'button';
+    colorBtn.className = 'preset-color-btn';
+    colorBtn.style.backgroundColor = color;
+    colorBtn.setAttribute('title', color);
+    if (preset.color === color) {
+      colorBtn.classList.add('selected');
+    }
+    colorBtn.addEventListener('click', () => {
+      preset.color = color;
+      savePresets();
+      render();
+      // Update selection
+      colorPalette.querySelectorAll('.preset-color-btn').forEach(btn => btn.classList.remove('selected'));
+      colorBtn.classList.add('selected');
+    });
+    colorPalette.appendChild(colorBtn);
+  });
+  
+  item.appendChild(colorPalette);
+  
+  // Shortcut input with Ctrl+ prefix
+  const shortcutContainer = document.createElement('div');
+  shortcutContainer.className = 'preset-shortcut-container';
+  
+  const shortcutPrefix = document.createElement('span');
+  shortcutPrefix.className = 'preset-shortcut-prefix';
+  shortcutPrefix.textContent = 'Ctrl+';
+  shortcutContainer.appendChild(shortcutPrefix);
+  
   const shortcutInput = document.createElement('input');
   shortcutInput.type = 'text';
   shortcutInput.value = preset.shortcut || '';
   shortcutInput.className = 'preset-settings-input preset-shortcut-input';
-  shortcutInput.placeholder = 'ショートカットキー';
+  shortcutInput.placeholder = '';
   shortcutInput.maxLength = 1;
   shortcutInput.addEventListener('change', () => {
     preset.shortcut = shortcutInput.value.toUpperCase();
     savePresets();
   });
-  item.appendChild(shortcutInput);
+  shortcutContainer.appendChild(shortcutInput);
+  
+  item.appendChild(shortcutContainer);
   
   // Delete button
   const deleteBtn = document.createElement('button');
@@ -1542,7 +1574,7 @@ function createCheckbox(label, checked, onChange) {
 function addNewPreset(listContainer) {
   const newPreset = {
     id: 'preset_' + Date.now(),
-    name: '新しいプリセット',
+    name: '',
     bold: false,
     italic: false,
     underline: false,
