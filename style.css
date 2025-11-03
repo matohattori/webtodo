@@ -662,4 +662,6 @@ body.reorder-mode input[type="checkbox"] {
   background: rgba(255, 255, 255, 0.7);
   border: 1px solid currentColor;
   opacity: 0.9;
+  margin-left: 6px;
+  flex-shrink: 0;
 }

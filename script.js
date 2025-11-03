@@ -1258,7 +1258,7 @@ function getDeadlineDisplay(deadlineStr) {
     text = '0d';
     color = '#800080'; // Purple
   } else if (days === 1) {
-    // Tomorrow (1 day before)
+    // Tomorrow
     text = '-1d';
     color = '#FF0000'; // Red
   } else if (days >= 2 && days <= 7) {
@@ -2956,10 +2956,6 @@ function renderItem(item) {
       deadlineSpan.className = 'deadline-indicator';
       deadlineSpan.textContent = deadlineDisplay.text;
       deadlineSpan.style.color = deadlineDisplay.color;
-      deadlineSpan.style.fontSize = '11px';
-      deadlineSpan.style.fontWeight = '600';
-      deadlineSpan.style.marginLeft = '6px';
-      deadlineSpan.style.flexShrink = '0';
       deadlineSpan.setAttribute('title', `納期: ${item.deadline}`);
       li.appendChild(deadlineSpan);
     }
