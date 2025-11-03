@@ -1301,9 +1301,35 @@ function promptForDeadline(item) {
         return true;
       }
       
+      // Trim whitespace
+      dateValue = dateValue.trim();
+      
       // Validate date format
       if (!/^\d{4}-\d{2}-\d{2}$/.test(dateValue)) {
-        helpers.setError('有効な日付形式（YYYY-MM-DD）を入力してください。');
+        helpers.setError('有効な日付形式（YYYY-MM-DD）を入力してください。例: 2025-12-31');
+        return false;
+      }
+      
+      // Validate that the date is actually valid (e.g., not 2025-13-45)
+      const dateParts = dateValue.split('-');
+      const year = parseInt(dateParts[0], 10);
+      const month = parseInt(dateParts[1], 10);
+      const day = parseInt(dateParts[2], 10);
+      
+      if (month < 1 || month > 12) {
+        helpers.setError('月は01から12の範囲で入力してください。');
+        return false;
+      }
+      
+      if (day < 1 || day > 31) {
+        helpers.setError('日は01から31の範囲で入力してください。');
+        return false;
+      }
+      
+      // Check if the date is valid by creating a Date object and comparing
+      const testDate = new Date(year, month - 1, day);
+      if (testDate.getFullYear() !== year || testDate.getMonth() !== month - 1 || testDate.getDate() !== day) {
+        helpers.setError('存在しない日付です。正しい日付を入力してください。');
         return false;
       }
       
@@ -2444,6 +2470,11 @@ function injectDeadlineDialogStyles() {
   font-size: 14px;
   border: 1px solid #ccc;
   border-radius: 6px;
+  font-family: monospace;
+}
+.deadline-dialog-input::placeholder {
+  color: #999;
+  font-size: 13px;
 }
 .deadline-dialog-input:focus {
   border-color: #4aa3ff;
@@ -2506,7 +2537,7 @@ function ensureDeadlineDialog() {
     <div class="deadline-dialog" role="dialog" aria-modal="true" aria-label="納期の設定">
       <form class="deadline-dialog-form">
         <label class="deadline-dialog-label" for="deadline-dialog-input">納期</label>
-        <input id="deadline-dialog-input" class="deadline-dialog-input" type="date" />
+        <input id="deadline-dialog-input" class="deadline-dialog-input" type="text" placeholder="YYYY-MM-DD (例: 2025-12-31)" />
         <div class="deadline-dialog-error" aria-live="polite"></div>
         <div class="deadline-dialog-actions">
           <button type="button" class="deadline-dialog-clear">クリア</button>
