@@ -1,6 +1,7 @@
-﻿// Data structure: { id, type, text, checked, order, decoration }
+﻿// Data structure: { id, type, text, checked, order, decoration, deadline }
 // type: 'text' | 'checkbox' | 'list' | 'hr' | 'heading'
 // decoration: { presetId } or null
+// deadline: ISO date string or null
 
 let items = [];
 let undoStack = [];
@@ -206,7 +207,8 @@ function addItemFromServer(data) {
     text: data.text || '',
     checked: Number(data.done) === 1,
     order: newOrder,
-    decoration: data.decoration || null
+    decoration: data.decoration || null,
+    deadline: data.deadline || null
   };
   
   items.push(newItem);
@@ -845,7 +847,8 @@ function loadItems(callback) {
         text: row.text || '',
         checked: Number(row.done) === 1,
         order: row.sort_order || 0,
-        decoration: row.decoration ? JSON.parse(row.decoration) : null
+        decoration: row.decoration ? JSON.parse(row.decoration) : null,
+        deadline: row.deadline || null
       }));
       render();
       if (typeof callback === 'function') callback();
@@ -956,6 +959,10 @@ function updateItem(id, updates, callback, options = {}) {
     params.append('decoration', updates.decoration ? JSON.stringify(updates.decoration) : '');
   }
   
+  if (updates.deadline !== undefined) {
+    params.append('deadline', updates.deadline || '');
+  }
+  
   fetch('api.php?action=edit', {
     method: 'POST',
     headers: {'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8'},
@@ -971,6 +978,9 @@ function updateItem(id, updates, callback, options = {}) {
       }
       if (updates.decoration !== undefined) {
         item.decoration = updates.decoration;
+      }
+      if (updates.deadline !== undefined) {
+        item.deadline = updates.deadline;
       }
       if (typeof callback === 'function') {
         callback();
@@ -1210,6 +1220,99 @@ function applyColorChoice(colorId) {
   closeColorMenu();
 }
 
+// Calculate days until deadline
+function calculateDeadlineDays(deadlineStr) {
+  if (!deadlineStr) return null;
+  
+  try {
+    const deadline = new Date(deadlineStr);
+    const today = new Date();
+    
+    // Reset time to midnight for accurate day comparison
+    deadline.setHours(0, 0, 0, 0);
+    today.setHours(0, 0, 0, 0);
+    
+    const diffTime = deadline - today;
+    const diffDays = Math.round(diffTime / (1000 * 60 * 60 * 24));
+    
+    return diffDays;
+  } catch (err) {
+    console.error('Failed to calculate deadline:', err);
+    return null;
+  }
+}
+
+// Get deadline display text and color
+function getDeadlineDisplay(deadlineStr) {
+  const days = calculateDeadlineDays(deadlineStr);
+  if (days === null) return null;
+  
+  let text, color;
+  
+  if (days < 0) {
+    // Overdue
+    text = `+${Math.abs(days)}d`;
+    color = '#800080'; // Purple
+  } else if (days === 0) {
+    // Today
+    text = '0d';
+    color = '#800080'; // Purple
+  } else if (days === 1) {
+    // Tomorrow (1 day before)
+    text = '-1d';
+    color = '#FF0000'; // Red
+  } else if (days >= 2 && days <= 7) {
+    // 2-7 days before
+    text = `-${days}d`;
+    color = '#FFA500'; // Orange/Yellow
+  } else {
+    // More than 7 days
+    text = `-${days}d`;
+    color = '#666666'; // Gray for far future
+  }
+  
+  return { text, color };
+}
+
+// Set deadline for an item
+function setDeadline(item, deadlineStr) {
+  if (!item) return;
+  
+  captureStateForUndo('deadline', { itemId: item.id, oldDeadline: item.deadline });
+  
+  item.deadline = deadlineStr;
+  updateItem(item.id, { deadline: deadlineStr }, undefined, { skipReload: true });
+  
+  // Re-render to show deadline indicator
+  render();
+}
+
+// Prompt for deadline
+function promptForDeadline(item) {
+  if (!item) return;
+  
+  // Create a simple date input dialog
+  openDeadlineDialog({
+    currentDeadline: item.deadline,
+    onSubmit: (dateValue, helpers) => {
+      if (!dateValue) {
+        // Clear deadline
+        setDeadline(item, null);
+        return true;
+      }
+      
+      // Validate date format
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(dateValue)) {
+        helpers.setError('有効な日付形式（YYYY-MM-DD）を入力してください。');
+        return false;
+      }
+      
+      setDeadline(item, dateValue);
+      return true;
+    }
+  });
+}
+
 // Handle context menu for decoration presets and hyperlinks
 function handleContextMenu(e, content, item) {
   const selection = window.getSelection();
@@ -1387,12 +1490,27 @@ function showDecorationPresetsMenu(e, item) {
     contextMenu.appendChild(menuItem);
   });
   
+  // Add deadline menu item
+  const deadlineItem = document.createElement('div');
+  deadlineItem.className = 'context-menu-item context-menu-separator';
+  deadlineItem.style.borderTop = '1px solid #ddd';
+  deadlineItem.style.marginTop = '4px';
+  deadlineItem.style.paddingTop = '8px';
+  
+  const deadlineLabel = document.createElement('span');
+  deadlineLabel.className = 'context-menu-item-label';
+  deadlineLabel.textContent = '納期設定...';
+  deadlineItem.appendChild(deadlineLabel);
+  
+  deadlineItem.addEventListener('click', () => {
+    removeContextMenu();
+    promptForDeadline(item);
+  });
+  contextMenu.appendChild(deadlineItem);
+  
   // Add settings button
   const settingsItem = document.createElement('div');
-  settingsItem.className = 'context-menu-item context-menu-separator';
-  settingsItem.style.borderTop = '1px solid #ddd';
-  settingsItem.style.marginTop = '4px';
-  settingsItem.style.paddingTop = '8px';
+  settingsItem.className = 'context-menu-item';
   
   const settingsLabel = document.createElement('span');
   settingsLabel.className = 'context-menu-item-label';
@@ -2049,6 +2167,11 @@ let hyperlinkDialogStylesInjected = false;
 let hyperlinkDialogState = null;
 let hyperlinkDialogPreviousActiveElement = null;
 
+let deadlineDialogElements = null;
+let deadlineDialogStylesInjected = false;
+let deadlineDialogState = null;
+let deadlineDialogPreviousActiveElement = null;
+
 function injectHyperlinkDialogStyles() {
   if (hyperlinkDialogStylesInjected) return;
   const style = document.createElement('style');
@@ -2274,6 +2397,249 @@ function closeHyperlinkDialog() {
     hyperlinkDialogPreviousActiveElement.focus();
   }
   hyperlinkDialogPreviousActiveElement = null;
+}
+
+// Deadline dialog functions
+function injectDeadlineDialogStyles() {
+  if (deadlineDialogStylesInjected) return;
+  const style = document.createElement('style');
+  style.textContent = `
+.deadline-dialog-overlay {
+  position: fixed;
+  inset: 0;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  background: rgba(0, 0, 0, 0.35);
+  z-index: 10001;
+  overflow: auto;
+}
+.deadline-dialog-overlay.visible {
+  display: flex;
+}
+.deadline-dialog {
+  width: min(400px, calc(100vw - 32px));
+  max-height: calc(100vh - 32px);
+  overflow-y: auto;
+  background: #fff;
+  color: #222;
+  border-radius: 8px;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.2);
+  padding: 20px;
+  font-size: 14px;
+}
+.deadline-dialog-form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.deadline-dialog-label {
+  font-size: 14px;
+  font-weight: 600;
+}
+.deadline-dialog-input {
+  width: 100%;
+  padding: 10px;
+  font-size: 14px;
+  border: 1px solid #ccc;
+  border-radius: 6px;
+}
+.deadline-dialog-input:focus {
+  border-color: #4aa3ff;
+  outline: none;
+  box-shadow: 0 0 0 2px rgba(74, 163, 255, 0.2);
+}
+.deadline-dialog-error {
+  min-height: 16px;
+  font-size: 12px;
+  color: #dc2626;
+}
+.deadline-dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+.deadline-dialog-actions button {
+  min-width: 72px;
+  padding: 6px 12px;
+  font-size: 13px;
+  border-radius: 4px;
+  border: none;
+  cursor: pointer;
+}
+.deadline-dialog-clear {
+  background: #f2f2f2;
+  color: #333;
+  margin-right: auto;
+}
+.deadline-dialog-clear:hover {
+  background: #e5e5e5;
+}
+.deadline-dialog-cancel {
+  background: #f2f2f2;
+  color: #333;
+}
+.deadline-dialog-cancel:hover {
+  background: #e5e5e5;
+}
+.deadline-dialog-submit {
+  background: #4aa3ff;
+  color: #fff;
+}
+.deadline-dialog-submit:hover {
+  background: #2589f5;
+}
+`;
+  document.head.appendChild(style);
+  deadlineDialogStylesInjected = true;
+}
+
+function ensureDeadlineDialog() {
+  if (deadlineDialogElements) return deadlineDialogElements;
+  injectDeadlineDialogStyles();
+  
+  const overlay = document.createElement('div');
+  overlay.className = 'deadline-dialog-overlay';
+  overlay.setAttribute('aria-hidden', 'true');
+  overlay.innerHTML = `
+    <div class="deadline-dialog" role="dialog" aria-modal="true" aria-label="納期の設定">
+      <form class="deadline-dialog-form">
+        <label class="deadline-dialog-label" for="deadline-dialog-input">納期</label>
+        <input id="deadline-dialog-input" class="deadline-dialog-input" type="date" />
+        <div class="deadline-dialog-error" aria-live="polite"></div>
+        <div class="deadline-dialog-actions">
+          <button type="button" class="deadline-dialog-clear">クリア</button>
+          <button type="button" class="deadline-dialog-cancel">キャンセル</button>
+          <button type="submit" class="deadline-dialog-submit">設定</button>
+        </div>
+      </form>
+    </div>
+  `;
+  
+  document.body.appendChild(overlay);
+  
+  const dialog = overlay.querySelector('.deadline-dialog');
+  const form = overlay.querySelector('.deadline-dialog-form');
+  const input = overlay.querySelector('.deadline-dialog-input');
+  const error = overlay.querySelector('.deadline-dialog-error');
+  const clearButton = overlay.querySelector('.deadline-dialog-clear');
+  const cancelButton = overlay.querySelector('.deadline-dialog-cancel');
+  
+  form.addEventListener('submit', (event) => {
+    event.preventDefault();
+    if (!deadlineDialogState || typeof deadlineDialogState.onSubmit !== 'function') {
+      closeDeadlineDialog('submit');
+      return;
+    }
+    
+    const value = input.value || '';
+    const helpers = {
+      setError: (message) => {
+        error.textContent = message || '';
+      },
+      close: () => closeDeadlineDialog('submit')
+    };
+    
+    try {
+      const result = deadlineDialogState.onSubmit(value, helpers);
+      if (result && typeof result.then === 'function') {
+        result.then((shouldClose) => {
+          if (shouldClose !== false) {
+            closeDeadlineDialog('submit');
+          }
+        }).catch(err => {
+          console.error('Deadline dialog submit failed:', err);
+        });
+      } else if (result !== false) {
+        closeDeadlineDialog('submit');
+      }
+    } catch (err) {
+      console.error('Deadline dialog submit threw an error:', err);
+      closeDeadlineDialog('submit');
+    }
+  });
+  
+  clearButton.addEventListener('click', () => {
+    if (deadlineDialogState && typeof deadlineDialogState.onSubmit === 'function') {
+      const helpers = {
+        setError: () => {},
+        close: () => closeDeadlineDialog('clear')
+      };
+      deadlineDialogState.onSubmit(null, helpers);
+    }
+    closeDeadlineDialog('clear');
+  });
+  
+  cancelButton.addEventListener('click', () => {
+    if (deadlineDialogState && typeof deadlineDialogState.onCancel === 'function') {
+      deadlineDialogState.onCancel();
+    }
+    closeDeadlineDialog('cancel');
+  });
+  
+  overlay.addEventListener('click', (event) => {
+    if (event.target === overlay) {
+      if (deadlineDialogState && typeof deadlineDialogState.onCancel === 'function') {
+        deadlineDialogState.onCancel();
+      }
+      closeDeadlineDialog('cancel');
+    }
+  });
+  
+  overlay.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      if (deadlineDialogState && typeof deadlineDialogState.onCancel === 'function') {
+        deadlineDialogState.onCancel();
+      }
+      closeDeadlineDialog('cancel');
+    }
+  });
+  
+  deadlineDialogElements = { overlay, dialog, form, input, error, clearButton, cancelButton };
+  return deadlineDialogElements;
+}
+
+function openDeadlineDialog(options = {}) {
+  const elements = ensureDeadlineDialog();
+  const { overlay, input, error } = elements;
+  
+  deadlineDialogState = {
+    onSubmit: typeof options.onSubmit === 'function' ? options.onSubmit : null,
+    onCancel: typeof options.onCancel === 'function' ? options.onCancel : null
+  };
+  
+  deadlineDialogPreviousActiveElement = document.activeElement instanceof HTMLElement
+    ? document.activeElement
+    : null;
+  
+  input.value = options.currentDeadline || '';
+  error.textContent = '';
+  
+  overlay.classList.add('visible');
+  overlay.setAttribute('aria-hidden', 'false');
+  
+  requestAnimationFrame(() => {
+    input.focus();
+  });
+}
+
+function closeDeadlineDialog() {
+  if (!deadlineDialogElements) return;
+  const { overlay, error, input } = deadlineDialogElements;
+  
+  overlay.classList.remove('visible');
+  overlay.setAttribute('aria-hidden', 'true');
+  error.textContent = '';
+  input.value = '';
+  
+  deadlineDialogState = null;
+  
+  if (deadlineDialogPreviousActiveElement && typeof deadlineDialogPreviousActiveElement.focus === 'function') {
+    deadlineDialogPreviousActiveElement.focus();
+  }
+  deadlineDialogPreviousActiveElement = null;
 }
 
 // Sanitize HTML to only allow anchor tags with safe attributes
@@ -2581,6 +2947,23 @@ function renderItem(item) {
   setupContentHandlers(content, item, li);
   
   li.appendChild(content);
+  
+  // Deadline indicator
+  if (item.deadline) {
+    const deadlineDisplay = getDeadlineDisplay(item.deadline);
+    if (deadlineDisplay) {
+      const deadlineSpan = document.createElement('span');
+      deadlineSpan.className = 'deadline-indicator';
+      deadlineSpan.textContent = deadlineDisplay.text;
+      deadlineSpan.style.color = deadlineDisplay.color;
+      deadlineSpan.style.fontSize = '11px';
+      deadlineSpan.style.fontWeight = '600';
+      deadlineSpan.style.marginLeft = '6px';
+      deadlineSpan.style.flexShrink = '0';
+      deadlineSpan.setAttribute('title', `納期: ${item.deadline}`);
+      li.appendChild(deadlineSpan);
+    }
+  }
   
   // Delete button
   const deleteBtn = createDeleteButton(item.id);
