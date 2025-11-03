@@ -1311,11 +1311,14 @@ function promptForDeadline(item) {
       }
       
       // Validate that the date is actually valid (e.g., not 2025-13-45)
+      // We do both basic range checks AND Date object validation to provide
+      // more specific error messages to users (e.g., "month out of range" vs "invalid date")
       const dateParts = dateValue.split('-');
       const year = parseInt(dateParts[0], 10);
       const month = parseInt(dateParts[1], 10);
       const day = parseInt(dateParts[2], 10);
       
+      // Basic range validation for more specific error messages
       if (month < 1 || month > 12) {
         helpers.setError('月は01から12の範囲で入力してください。');
         return false;
@@ -1326,7 +1329,7 @@ function promptForDeadline(item) {
         return false;
       }
       
-      // Check if the date is valid by creating a Date object and comparing
+      // Check if the date is valid (catches edge cases like Feb 30, April 31, etc.)
       const testDate = new Date(year, month - 1, day);
       if (testDate.getFullYear() !== year || testDate.getMonth() !== month - 1 || testDate.getDate() !== day) {
         helpers.setError('存在しない日付です。正しい日付を入力してください。');
