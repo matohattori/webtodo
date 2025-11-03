@@ -37,6 +37,9 @@ if (!in_array('parent_id', $columns)) {
 if (!in_array('decoration', $columns)) {
   $db->exec('ALTER TABLE todos ADD COLUMN decoration TEXT DEFAULT NULL');
 }
+if (!in_array('deadline', $columns)) {
+  $db->exec('ALTER TABLE todos ADD COLUMN deadline TEXT DEFAULT NULL');
+}
 $action = $_GET['action'] ?? '';
 
 function open_url_with_os(string $url): bool {
@@ -76,7 +79,7 @@ function open_url_with_os(string $url): bool {
 
 switch ($action) {
   case 'list':
-    $res = $db->query('SELECT id, text, done, type, sort_order, parent_id, decoration FROM todos ORDER BY sort_order ASC, id ASC');
+    $res = $db->query('SELECT id, text, done, type, sort_order, parent_id, decoration, deadline FROM todos ORDER BY sort_order ASC, id ASC');
     $rows = [];
     while ($row = $res->fetchArray(SQLITE3_ASSOC)) { $rows[] = $row; }
     header('Content-Type: application/json; charset=utf-8');
@@ -142,6 +145,8 @@ switch ($action) {
     $type = $typeProvided ? (string)$_POST['type'] : '';
     $decorationProvided = array_key_exists('decoration', $_POST);
     $decoration = $decorationProvided ? $_POST['decoration'] : null;
+    $deadlineProvided = array_key_exists('deadline', $_POST);
+    $deadline = $deadlineProvided ? $_POST['deadline'] : null;
     
     if ($id) {
       // Build dynamic SQL based on what fields are being updated
@@ -159,6 +164,10 @@ switch ($action) {
       if ($decorationProvided) {
         $updates[] = 'decoration = :decoration';
         $params[':decoration'] = [$decoration, SQLITE3_TEXT];
+      }
+      if ($deadlineProvided) {
+        $updates[] = 'deadline = :deadline';
+        $params[':deadline'] = [$deadline, SQLITE3_TEXT];
       }
       
       if (count($updates) > 0) {
