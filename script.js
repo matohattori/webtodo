@@ -1291,9 +1291,23 @@ function setDeadline(item, deadlineStr) {
 function promptForDeadline(item) {
   if (!item) return;
   
+  // Calculate default deadline: 7 days from now
+  const defaultDate = new Date();
+  defaultDate.setDate(defaultDate.getDate() + 7);
+  const defaultYear = defaultDate.getFullYear();
+  const defaultMonth = String(defaultDate.getMonth() + 1).padStart(2, '0');
+  const defaultDay = String(defaultDate.getDate()).padStart(2, '0');
+  const defaultDeadline = `${defaultYear}${defaultMonth}${defaultDay}`;
+  
+  // Convert existing deadline from YYYY-MM-DD to YYYYMMDD format if needed
+  let currentDeadlineFormatted = item.deadline;
+  if (currentDeadlineFormatted && currentDeadlineFormatted.includes('-')) {
+    currentDeadlineFormatted = currentDeadlineFormatted.replace(/-/g, '');
+  }
+  
   // Create a simple date input dialog
   openDeadlineDialog({
-    currentDeadline: item.deadline,
+    currentDeadline: currentDeadlineFormatted || defaultDeadline,
     onSubmit: (dateValue, helpers) => {
       if (!dateValue) {
         // Clear deadline
@@ -1304,19 +1318,16 @@ function promptForDeadline(item) {
       // Trim whitespace
       dateValue = dateValue.trim();
       
-      // Validate date format
-      if (!/^\d{4}-\d{2}-\d{2}$/.test(dateValue)) {
-        helpers.setError('有効な日付形式（YYYY-MM-DD）を入力してください。例: 2025-12-31');
+      // Validate date format (YYYYMMDD)
+      if (!/^\d{8}$/.test(dateValue)) {
+        helpers.setError('有効な日付形式（YYYYMMDD）を入力してください。例: 20251231');
         return false;
       }
       
-      // Validate that the date is actually valid (e.g., not 2025-13-45)
-      // We do both basic range checks AND Date object validation to provide
-      // more specific error messages to users (e.g., "month out of range" vs "invalid date")
-      const dateParts = dateValue.split('-');
-      const year = parseInt(dateParts[0], 10);
-      const month = parseInt(dateParts[1], 10);
-      const day = parseInt(dateParts[2], 10);
+      // Parse the date
+      const year = parseInt(dateValue.substring(0, 4), 10);
+      const month = parseInt(dateValue.substring(4, 6), 10);
+      const day = parseInt(dateValue.substring(6, 8), 10);
       
       // Basic range validation for more specific error messages
       if (month < 1 || month > 12) {
@@ -1336,7 +1347,9 @@ function promptForDeadline(item) {
         return false;
       }
       
-      setDeadline(item, dateValue);
+      // Convert to YYYY-MM-DD format for storage
+      const formattedDate = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+      setDeadline(item, formattedDate);
       return true;
     }
   });
@@ -1519,24 +1532,6 @@ function showDecorationPresetsMenu(e, item) {
     contextMenu.appendChild(menuItem);
   });
   
-  // Add deadline menu item
-  const deadlineItem = document.createElement('div');
-  deadlineItem.className = 'context-menu-item context-menu-separator';
-  deadlineItem.style.borderTop = '1px solid #ddd';
-  deadlineItem.style.marginTop = '4px';
-  deadlineItem.style.paddingTop = '8px';
-  
-  const deadlineLabel = document.createElement('span');
-  deadlineLabel.className = 'context-menu-item-label';
-  deadlineLabel.textContent = '納期設定...';
-  deadlineItem.appendChild(deadlineLabel);
-  
-  deadlineItem.addEventListener('click', () => {
-    removeContextMenu();
-    promptForDeadline(item);
-  });
-  contextMenu.appendChild(deadlineItem);
-  
   // Add settings button
   const settingsItem = document.createElement('div');
   settingsItem.className = 'context-menu-item';
@@ -1551,6 +1546,34 @@ function showDecorationPresetsMenu(e, item) {
     openPresetSettings();
   });
   contextMenu.appendChild(settingsItem);
+  
+  // Add separator before deadline
+  const separator = document.createElement('div');
+  separator.className = 'context-menu-separator';
+  separator.style.borderTop = '1px solid #ddd';
+  separator.style.margin = '4px 0';
+  separator.style.height = '1px';
+  contextMenu.appendChild(separator);
+  
+  // Add deadline menu item
+  const deadlineItem = document.createElement('div');
+  deadlineItem.className = 'context-menu-item';
+  
+  const deadlineLabel = document.createElement('span');
+  deadlineLabel.className = 'context-menu-item-label';
+  deadlineLabel.textContent = '納期設定...';
+  deadlineItem.appendChild(deadlineLabel);
+  
+  const deadlineShortcut = document.createElement('span');
+  deadlineShortcut.className = 'context-menu-shortcut';
+  deadlineShortcut.textContent = 'Ctrl+D';
+  deadlineItem.appendChild(deadlineShortcut);
+  
+  deadlineItem.addEventListener('click', () => {
+    removeContextMenu();
+    promptForDeadline(item);
+  });
+  contextMenu.appendChild(deadlineItem);
   
   contextMenu.style.left = `${e.pageX}px`;
   contextMenu.style.top = `${e.pageY}px`;
@@ -2540,7 +2563,7 @@ function ensureDeadlineDialog() {
     <div class="deadline-dialog" role="dialog" aria-modal="true" aria-label="納期の設定">
       <form class="deadline-dialog-form">
         <label class="deadline-dialog-label" for="deadline-dialog-input">納期</label>
-        <input id="deadline-dialog-input" class="deadline-dialog-input" type="text" placeholder="YYYY-MM-DD (例: 2025-12-31)" />
+        <input id="deadline-dialog-input" class="deadline-dialog-input" type="text" placeholder="YYYYMMDD (例: 20251231)" />
         <div class="deadline-dialog-error" aria-live="polite"></div>
         <div class="deadline-dialog-actions">
           <button type="button" class="deadline-dialog-clear">クリア</button>
@@ -3176,6 +3199,13 @@ function handleKeyDown(e, content, item, li) {
       if (!range) return;
       saveSelectionSnapshot(window.getSelection(), content);
       promptForHyperlink(content, item);
+      return;
+    }
+    
+    // Ctrl+D for deadline setting
+    if (key === 'd') {
+      e.preventDefault();
+      promptForDeadline(item);
       return;
     }
   }
