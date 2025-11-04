@@ -3108,9 +3108,15 @@ function setupContentHandlers(content, item, li) {
       return;
     }
     
-    // For web links, allow default behavior (target="_blank") to open in OS default browser
+    // For web links, validate URL and allow default behavior (target="_blank") to open in OS default browser
     // This is especially important for webview contexts where target="_blank" opens in external browser
-    // Don't prevent default - let the browser/webview handle it naturally
+    if (originalHref && !isValidUrl(originalHref)) {
+      // Invalid URL - prevent default to avoid security issues
+      e.preventDefault();
+      console.warn('Invalid URL detected, blocked:', originalHref);
+      return;
+    }
+    // Valid web link - don't prevent default, let the browser/webview handle it naturally with target="_blank"
   });
   
   content.addEventListener('mousemove', (e) => {
