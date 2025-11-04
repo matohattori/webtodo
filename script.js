@@ -3091,13 +3091,12 @@ function setupContentHandlers(content, item, li) {
     const anchor = findAnchorFromEventTarget(e.target);
     if (!anchor) return;
     
-    e.preventDefault();
-    hideLinkTooltip();
-    
     const originalHref = getAnchorOriginalHref(anchor);
     const isLocal = isLocalFilePath(originalHref);
     
     if (isLocal) {
+      e.preventDefault();
+      hideLinkTooltip();
       const localPath = anchor.getAttribute('data-local-path') || extractLocalFilePath(originalHref);
       const copied = await copyPathToClipboard(localPath);
       hideLinkTooltip();
@@ -3109,10 +3108,9 @@ function setupContentHandlers(content, item, li) {
       return;
     }
     
-    // Validate URL protocol before opening (defense-in-depth)
-    if (originalHref && isValidUrl(originalHref)) {
-      await openWebLink(originalHref);
-    }
+    // For web links, allow default behavior (target="_blank") to open in OS default browser
+    // This is especially important for webview contexts where target="_blank" opens in external browser
+    // Don't prevent default - let the browser/webview handle it naturally
   });
   
   content.addEventListener('mousemove', (e) => {
