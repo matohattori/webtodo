@@ -1247,31 +1247,49 @@ function getDeadlineDisplay(deadlineStr) {
   const days = calculateDeadlineDays(deadlineStr);
   if (days === null) return null;
   
-  let text, color;
-  
-  if (days < 0) {
-    // Overdue
-    text = `+${Math.abs(days)}d`;
-    color = '#800080'; // Purple
-  } else if (days === 0) {
-    // Today
-    text = '0d';
-    color = '#800080'; // Purple
-  } else if (days === 1) {
-    // Tomorrow
-    text = '-1d';
-    color = '#FF0000'; // Red
-  } else if (days >= 2 && days <= 7) {
-    // 2-7 days before
-    text = `-${days}d`;
-    color = '#FFA500'; // Orange/Yellow
-  } else {
-    // More than 7 days
-    text = `-${days}d`;
-    color = '#666666'; // Gray for far future
+  let text, textColor, backgroundColor, tooltip;
+  // Tooltip: always show deadline as YYYY/MM/DD
+  let tooltipDate = '';
+  if (deadlineStr) {
+    // Accepts YYYY-MM-DD or YYYYMMDD
+    let y, m, d;
+    if (/^\d{8}$/.test(deadlineStr)) {
+      y = deadlineStr.slice(0,4);
+      m = deadlineStr.slice(4,6);
+      d = deadlineStr.slice(6,8);
+    } else if (/^\d{4}-\d{2}-\d{2}$/.test(deadlineStr)) {
+      [y, m, d] = deadlineStr.split('-');
+    }
+    if (y && m && d) {
+      tooltipDate = `${y}/${m}/${d}`;
+    } else {
+      tooltipDate = deadlineStr;
+    }
   }
-  
-  return { text, color };
+  tooltip = tooltipDate;
+
+  if (days < 0) {
+    // After deadline: +Xd, purple
+    text = `+${Math.abs(days)}d`;
+    textColor = '#FFFFFF';
+    backgroundColor = '#800080';
+  } else if (days === 0 || days === 1) {
+    // -0d or -1d: red
+    text = `-${days}d`;
+    textColor = '#FFFFFF';
+    backgroundColor = '#FF0000';
+  } else if (days >= 2 && days <= 7) {
+    // -2d to -7d: yellow
+    text = `-${days}d`;
+    textColor = '#000000';
+    backgroundColor = '#ffea00ff';
+  } else {
+    // More than 7 days before: white
+    text = `-${days}d`;
+    textColor = '#000000';
+    backgroundColor = '#FFFFFF';
+  }
+  return { text, textColor, backgroundColor, tooltip };
 }
 
 // Set deadline for an item
@@ -2999,6 +3017,18 @@ function renderItem(item) {
   } else {
     content.removeAttribute('data-placeholder');
   }
+
+  // --- Patch: Make anchor clicks open in new window ---
+  content.addEventListener('click', function(e) {
+    const anchor = e.target.closest('a');
+    if (anchor && content.contains(anchor)) {
+      e.preventDefault();
+      const href = anchor.getAttribute('href');
+      if (href) {
+        window.open(href, '_blank', 'noopener');
+      }
+    }
+  });
   
   // Setup content event handlers
   setupContentHandlers(content, item, li);
@@ -3012,11 +3042,102 @@ function renderItem(item) {
       const deadlineSpan = document.createElement('span');
       deadlineSpan.className = 'deadline-indicator';
       deadlineSpan.textContent = deadlineDisplay.text;
-      deadlineSpan.style.color = deadlineDisplay.color;
-      deadlineSpan.setAttribute('title', `納期: ${item.deadline}`);
+      deadlineSpan.style.color = deadlineDisplay.textColor;
+      deadlineSpan.style.backgroundColor = deadlineDisplay.backgroundColor;
+      deadlineSpan.setAttribute('data-tooltip', deadlineDisplay.tooltip || `納期: ${item.deadline}`);
+      deadlineSpan.addEventListener('mouseenter', function () {
+        showDeadlineTooltipForElement(deadlineSpan, deadlineSpan.getAttribute('data-tooltip'));
+      });
+      deadlineSpan.addEventListener('mouseleave', function () {
+        hideDeadlineTooltip();
+      });
       li.appendChild(deadlineSpan);
     }
   }
+// --- Deadline Tooltip ---
+let deadlineTooltip = null;
+let deadlineTooltipStylesInjected = false;
+let currentDeadlineTooltipTarget = null;
+
+function injectDeadlineTooltipStyles() {
+  if (deadlineTooltipStylesInjected) return;
+  const style = document.createElement('style');
+  style.textContent = `
+.deadline-tooltip {
+  position: fixed;
+  padding: 4px 8px;
+  background: rgba(34, 34, 34, 0.9);
+  color: #fff;
+  font-size: 12px;
+  border-radius: 4px;
+  pointer-events: none;
+  z-index: 9999;
+  opacity: 0;
+  transition: opacity 120ms ease;
+  max-width: 360px;
+  word-break: break-all;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.18);
+}
+.deadline-tooltip.visible {
+  opacity: 1;
+}
+`;
+  document.head.appendChild(style);
+  deadlineTooltipStylesInjected = true;
+}
+
+function ensureDeadlineTooltip() {
+  if (deadlineTooltip) return deadlineTooltip;
+  injectDeadlineTooltipStyles();
+  deadlineTooltip = document.createElement('div');
+  deadlineTooltip.className = 'deadline-tooltip';
+  document.body.appendChild(deadlineTooltip);
+  return deadlineTooltip;
+}
+
+function showDeadlineTooltipForElement(element, text) {
+  if (!element || !text) return;
+  const tooltip = ensureDeadlineTooltip();
+  currentDeadlineTooltipTarget = element;
+  tooltip.classList.remove('visible');
+  tooltip.textContent = text;
+
+  // Position tooltip below the element, within viewport
+  tooltip.style.left = '0px';
+  tooltip.style.top = '0px';
+  const rect = element.getBoundingClientRect();
+  const tooltipRect = tooltip.getBoundingClientRect();
+  const margin = 8;
+  const viewportWidth = window.innerWidth || document.documentElement.clientWidth;
+
+  let left = rect.left + window.scrollX;
+  if (left + tooltipRect.width + margin > window.scrollX + viewportWidth) {
+    left = window.scrollX + viewportWidth - tooltipRect.width - margin;
+  }
+  if (left < window.scrollX + margin) {
+    left = window.scrollX + margin;
+  }
+  const top = rect.bottom + window.scrollY + margin;
+
+  tooltip.style.left = `${Math.max(left, margin)}px`;
+  tooltip.style.top = `${top}px`;
+
+  requestAnimationFrame(() => {
+    if (currentDeadlineTooltipTarget === element) {
+      tooltip.classList.add('visible');
+    }
+  });
+}
+
+function hideDeadlineTooltip() {
+  currentDeadlineTooltipTarget = null;
+  if (deadlineTooltip) {
+    deadlineTooltip.classList.remove('visible');
+  }
+}
+
+window.addEventListener('scroll', hideDeadlineTooltip, true);
+window.addEventListener('blur', hideDeadlineTooltip);
   
   // Delete button
   const deleteBtn = createDeleteButton(item.id);
