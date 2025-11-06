@@ -1247,31 +1247,36 @@ function getDeadlineDisplay(deadlineStr) {
   const days = calculateDeadlineDays(deadlineStr);
   if (days === null) return null;
   
-  let text, color;
+  let text, textColor, backgroundColor;
   
   if (days < 0) {
-    // Overdue
+    // Overdue (0d~)
     text = `+${Math.abs(days)}d`;
-    color = '#800080'; // Purple
+    textColor = '#FFFFFF'; // White text
+    backgroundColor = '#800080'; // Purple background
   } else if (days === 0) {
-    // Today
+    // Today (0d)
     text = '0d';
-    color = '#800080'; // Purple
+    textColor = '#FFFFFF'; // White text
+    backgroundColor = '#800080'; // Purple background
   } else if (days === 1) {
-    // Tomorrow
+    // Tomorrow (-1d)
     text = '-1d';
-    color = '#FF0000'; // Red
+    textColor = '#FFFFFF'; // White text
+    backgroundColor = '#FF0000'; // Red background
   } else if (days >= 2 && days <= 7) {
-    // 2-7 days before
+    // 2-7 days before (-7d~-2d)
     text = `-${days}d`;
-    color = '#FFA500'; // Orange/Yellow
+    textColor = '#FFFFFF'; // White text
+    backgroundColor = '#D4A000'; // Dark yellow background
   } else {
-    // More than 7 days
+    // More than 7 days (~-8d)
     text = `-${days}d`;
-    color = '#666666'; // Gray for far future
+    textColor = '#000000'; // Black text
+    backgroundColor = '#FFFFFF'; // White background
   }
   
-  return { text, color };
+  return { text, textColor, backgroundColor };
 }
 
 // Set deadline for an item
@@ -3012,7 +3017,8 @@ function renderItem(item) {
       const deadlineSpan = document.createElement('span');
       deadlineSpan.className = 'deadline-indicator';
       deadlineSpan.textContent = deadlineDisplay.text;
-      deadlineSpan.style.color = deadlineDisplay.color;
+      deadlineSpan.style.color = deadlineDisplay.textColor;
+      deadlineSpan.style.backgroundColor = deadlineDisplay.backgroundColor;
       deadlineSpan.setAttribute('title', `納期: ${item.deadline}`);
       li.appendChild(deadlineSpan);
     }
