@@ -1250,27 +1250,27 @@ function getDeadlineDisplay(deadlineStr) {
   let text, textColor, backgroundColor;
   
   if (days < 0) {
-    // Overdue (0d~)
+    // Overdue (past deadline) - displays as +Xd
     text = `+${Math.abs(days)}d`;
     textColor = '#FFFFFF'; // White text
     backgroundColor = '#800080'; // Purple background
   } else if (days === 0) {
-    // Today (0d)
+    // Today (deadline is today) - displays as 0d
     text = '0d';
     textColor = '#FFFFFF'; // White text
     backgroundColor = '#800080'; // Purple background
   } else if (days === 1) {
-    // Tomorrow (-1d)
+    // Tomorrow (1 day until deadline) - displays as -1d
     text = '-1d';
     textColor = '#FFFFFF'; // White text
     backgroundColor = '#FF0000'; // Red background
   } else if (days >= 2 && days <= 7) {
-    // 2-7 days before (-7d~-2d)
+    // 2-7 days until deadline - displays as -2d to -7d
     text = `-${days}d`;
     textColor = '#FFFFFF'; // White text
     backgroundColor = '#D4A000'; // Dark yellow background
   } else {
-    // More than 7 days (~-8d)
+    // More than 7 days until deadline - displays as -8d, -9d, etc.
     text = `-${days}d`;
     textColor = '#000000'; // Black text
     backgroundColor = '#FFFFFF'; // White background
