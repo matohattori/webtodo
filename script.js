@@ -1323,54 +1323,148 @@ function promptForDeadline(item) {
     currentDeadlineFormatted = currentDeadlineFormatted.replace(/-/g, '');
   }
   
-  // Create a simple date input dialog
-  openDeadlineDialog({
-    currentDeadline: currentDeadlineFormatted || defaultDeadline,
-    onSubmit: (dateValue, helpers) => {
-      if (!dateValue) {
-        // Clear deadline
-        setDeadline(item, null);
-        return true;
-      }
-      
-      // Trim whitespace
-      dateValue = dateValue.trim();
-      
-      // Validate date format (YYYYMMDD)
-      if (!/^\d{8}$/.test(dateValue)) {
-        helpers.setError('有効な日付形式（YYYYMMDD）を入力してください。例: 20251231');
-        return false;
-      }
-      
-      // Parse the date
-      const year = parseInt(dateValue.substring(0, 4), 10);
-      const month = parseInt(dateValue.substring(4, 6), 10);
-      const day = parseInt(dateValue.substring(6, 8), 10);
-      
-      // Basic range validation for more specific error messages
-      if (month < 1 || month > 12) {
-        helpers.setError('月は01から12の範囲で入力してください。');
-        return false;
-      }
-      
-      if (day < 1 || day > 31) {
-        helpers.setError('日は01から31の範囲で入力してください。');
-        return false;
-      }
-      
-      // Check if the date is valid (catches edge cases like Feb 30, April 31, etc.)
-      const testDate = new Date(year, month - 1, day);
-      if (testDate.getFullYear() !== year || testDate.getMonth() !== month - 1 || testDate.getDate() !== day) {
-        helpers.setError('存在しない日付です。正しい日付を入力してください。');
-        return false;
-      }
-      
-      // Convert to YYYY-MM-DD format for storage
-      const formattedDate = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-      setDeadline(item, formattedDate);
-      return true;
+  // Create a date picker dialog using <input type="date">
+  const overlay = document.createElement('div');
+  overlay.className = 'preset-settings-overlay deadline-dialog-overlay';
+  overlay.setAttribute('role', 'dialog');
+  overlay.setAttribute('aria-modal', 'true');
+  overlay.style.position = 'fixed';
+  overlay.style.top = '0';
+  overlay.style.left = '0';
+  overlay.style.width = '100vw';
+  overlay.style.height = '100vh';
+  overlay.style.background = 'rgba(0,0,0,0.18)';
+  overlay.style.zIndex = '9999';
+
+  const dialog = document.createElement('div');
+  dialog.className = 'preset-settings-dialog deadline-dialog';
+  dialog.style.background = '#fff';
+  dialog.style.borderRadius = '12px';
+  dialog.style.boxShadow = '0 4px 24px rgba(0,0,0,0.22)';
+  dialog.style.padding = '10px 10px 8px 10px';
+  dialog.style.maxWidth = '260px';
+  dialog.style.margin = '40px auto';
+  dialog.style.position = 'relative';
+  dialog.style.display = 'flex';
+  dialog.style.flexDirection = 'column';
+  dialog.style.gap = '6px';
+
+  const header = document.createElement('div');
+  header.className = 'preset-settings-header deadline-dialog-header';
+  header.innerHTML = '<h2 style="margin:0;font-size:1em;font-weight:bold;">納期設定</h2>';
+  dialog.appendChild(header);
+
+  const input = document.createElement('input');
+  input.type = 'date';
+  input.className = 'deadline-dialog-date-input';
+  input.style.fontSize = '15px';
+  input.style.padding = '4px 8px';
+  input.style.width = '100%';
+  input.style.border = '1px solid #bbb';
+  input.style.borderRadius = '6px';
+  input.style.marginBottom = '0';
+  input.style.background = '#f8f8fa';
+  input.style.boxSizing = 'border-box';
+  // Set default value
+  let defaultValue = '';
+  if (item.deadline) {
+    if (/^\d{8}$/.test(currentDeadlineFormatted)) {
+      defaultValue = `${currentDeadlineFormatted.slice(0,4)}-${currentDeadlineFormatted.slice(4,6)}-${currentDeadlineFormatted.slice(6,8)}`;
+    } else if (/^\d{4}-\d{2}-\d{2}$/.test(currentDeadlineFormatted)) {
+      defaultValue = currentDeadlineFormatted;
     }
-  });
+  } else {
+    defaultValue = `${defaultYear}-${defaultMonth}-${defaultDay}`;
+  }
+  input.value = defaultValue;
+  input.min = '2000-01-01';
+  input.max = '2099-12-31';
+  dialog.appendChild(input);
+
+  const error = document.createElement('div');
+  error.className = 'deadline-dialog-error';
+  error.style.color = '#d00';
+  error.style.fontSize = '13px';
+  error.style.margin = '6px 0 0 0';
+  dialog.appendChild(error);
+
+  const actions = document.createElement('div');
+  actions.className = 'preset-settings-actions deadline-dialog-actions';
+  actions.style.display = 'flex';
+  actions.style.justifyContent = 'space-between';
+  actions.style.gap = '6px';
+
+  // 左側: クリアボタン
+  const leftActions = document.createElement('div');
+  leftActions.style.display = 'flex';
+  leftActions.style.justifyContent = 'flex-start';
+  leftActions.style.gap = '6px';
+
+  const clearBtn = document.createElement('button');
+  clearBtn.textContent = 'クリア';
+  clearBtn.type = 'button';
+  clearBtn.className = 'preset-settings-btn deadline-dialog-btn-clear';
+  clearBtn.style.fontSize = '13px';
+  clearBtn.style.padding = '3px 10px';
+  clearBtn.style.borderRadius = '4px';
+  clearBtn.style.minWidth = 'auto';
+  clearBtn.onclick = () => {
+    setDeadline(item, null);
+    overlay.remove();
+  };
+  leftActions.appendChild(clearBtn);
+
+  // 右側: OKとキャンセル
+  const rightActions = document.createElement('div');
+  rightActions.style.display = 'flex';
+  rightActions.style.justifyContent = 'flex-end';
+  rightActions.style.gap = '6px';
+
+  const okBtn = document.createElement('button');
+  okBtn.textContent = 'OK';
+  okBtn.type = 'button';
+  okBtn.className = 'preset-settings-btn deadline-dialog-btn-ok';
+  okBtn.style.fontWeight = 'bold';
+  okBtn.style.fontSize = '13px';
+  okBtn.style.padding = '3px 10px';
+  okBtn.style.borderRadius = '4px';
+  okBtn.style.minWidth = 'auto';
+  okBtn.onclick = () => {
+    if (!input.value) {
+      setDeadline(item, null);
+      overlay.remove();
+      return;
+    }
+    // Validate date format YYYY-MM-DD
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(input.value)) {
+      error.textContent = '有効な日付を選択してください。';
+      return;
+    }
+    setDeadline(item, input.value);
+    overlay.remove();
+  };
+  rightActions.appendChild(okBtn);
+
+  const cancelBtn = document.createElement('button');
+  cancelBtn.textContent = 'キャンセル';
+  cancelBtn.type = 'button';
+  cancelBtn.className = 'preset-settings-btn deadline-dialog-btn-cancel';
+  cancelBtn.style.fontSize = '13px';
+  cancelBtn.style.padding = '3px 10px';
+  cancelBtn.style.borderRadius = '4px';
+  cancelBtn.style.minWidth = 'auto';
+  cancelBtn.onclick = () => {
+    overlay.remove();
+  };
+  rightActions.appendChild(cancelBtn);
+
+  actions.appendChild(leftActions);
+  actions.appendChild(rightActions);
+  dialog.appendChild(actions);
+  overlay.appendChild(dialog);
+  document.body.appendChild(overlay);
+
+  input.focus();
 }
 
 // Handle context menu for decoration presets and hyperlinks
@@ -3076,6 +3170,7 @@ function injectDeadlineTooltipStyles() {
   transition: opacity 120ms ease;
   max-width: 360px;
   word-break: break-all;
+  white-space: nowrap;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.18);
 }
 .deadline-tooltip.visible {
