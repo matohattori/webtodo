@@ -1,7 +1,8 @@
-﻿// Data structure: { id, type, text, checked, order, decoration, deadline }
-// type: 'text' | 'checkbox' | 'list' | 'hr' | 'heading'
+﻿// Data structure: { id, type, text, checked, order, decoration, deadline, collapsed }
+// type: 'text' | 'checkbox' | 'list' | 'hr' | 'heading' | 'collapsible-heading'
 // decoration: { presetId } or null
 // deadline: ISO date string or null
+// collapsed: boolean (only for collapsible-heading)
 
 let items = [];
 let undoStack = [];
@@ -9,6 +10,9 @@ let redoStack = [];
 let decorationPresets = [];
 
 const list = document.getElementById('todoList');
+
+// Segoe Fluent icon code for collapsible headings (ChevronDown)
+const COLLAPSE_ICON_GLYPH = '\uE96E';
 
 // Default decoration presets
 const DEFAULT_PRESETS = [
@@ -208,7 +212,8 @@ function addItemFromServer(data) {
     checked: Number(data.done) === 1,
     order: newOrder,
     decoration: data.decoration || null,
-    deadline: data.deadline || null
+    deadline: data.deadline || null,
+    collapsed: Number(data.collapsed) === 1
   };
   
   items.push(newItem);
@@ -848,7 +853,8 @@ function loadItems(callback) {
         checked: Number(row.done) === 1,
         order: row.sort_order || 0,
         decoration: row.decoration ? JSON.parse(row.decoration) : null,
-        deadline: row.deadline || null
+        deadline: row.deadline || null,
+        collapsed: Number(row.collapsed) === 1
       }));
       render();
       if (typeof callback === 'function') callback();
@@ -963,6 +969,10 @@ function updateItem(id, updates, callback, options = {}) {
     params.append('deadline', updates.deadline || '');
   }
   
+  if (updates.collapsed !== undefined) {
+    params.append('collapsed', updates.collapsed ? '1' : '0');
+  }
+  
   fetch('api.php?action=edit', {
     method: 'POST',
     headers: {'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8'},
@@ -981,6 +991,9 @@ function updateItem(id, updates, callback, options = {}) {
       }
       if (updates.deadline !== undefined) {
         item.deadline = updates.deadline;
+      }
+      if (updates.collapsed !== undefined) {
+        item.collapsed = updates.collapsed;
       }
       if (typeof callback === 'function') {
         callback();
@@ -3009,6 +3022,36 @@ function removeHyperlink(anchor, content, item) {
   savedSelection = null;
 }
 
+// Toggle collapse state for a collapsible heading
+function toggleCollapse(headingId) {
+  const item = items.find(i => i.id === headingId);
+  if (!item || item.type !== 'collapsible-heading') return;
+  
+  const newCollapsedState = !item.collapsed;
+  item.collapsed = newCollapsedState;
+  
+  updateItem(item.id, { collapsed: newCollapsedState }, () => {
+    render();
+  }, { skipReload: true });
+}
+
+// Get items that should be hidden when a heading is collapsed
+function getCollapsibleChildren(headingId) {
+  const headingIndex = items.findIndex(i => i.id === headingId);
+  if (headingIndex === -1) return [];
+  
+  const children = [];
+  for (let i = headingIndex + 1; i < items.length; i++) {
+    const item = items[i];
+    // Stop at next heading, collapsible-heading, or horizontal rule
+    if (item.type === 'heading' || item.type === 'collapsible-heading' || item.type === 'hr') {
+      break;
+    }
+    children.push(item.id);
+  }
+  return children;
+}
+
 // Render all items
 function render() {
   list.innerHTML = '';
@@ -3016,9 +3059,29 @@ function render() {
   // Sort items by order
   items.sort((a, b) => a.order - b.order);
   
-  // Render all items
+  // Build a map of collapsed sections
+  const collapsedSections = new Map();
   items.forEach(item => {
-    renderItem(item);
+    if (item.type === 'collapsible-heading' && item.collapsed) {
+      const children = getCollapsibleChildren(item.id);
+      collapsedSections.set(item.id, children);
+    }
+  });
+  
+  // Render all items, hiding those in collapsed sections
+  items.forEach(item => {
+    // Check if this item should be hidden
+    let shouldHide = false;
+    for (const [headingId, childIds] of collapsedSections) {
+      if (childIds.includes(item.id)) {
+        shouldHide = true;
+        break;
+      }
+    }
+    
+    if (!shouldHide) {
+      renderItem(item);
+    }
   });
   
   // If no items exist, show single input row
@@ -3076,6 +3139,31 @@ function renderItem(item) {
     li.appendChild(bullet);
   }
   
+  let collapseIcon = null;
+  // Collapse icon for collapsible-heading type
+  if (item.type === 'collapsible-heading') {
+    collapseIcon = document.createElement('span');
+    collapseIcon.className = 'collapse-icon';
+    collapseIcon.textContent = COLLAPSE_ICON_GLYPH;
+    collapseIcon.classList.toggle('is-collapsed', item.collapsed);
+    collapseIcon.classList.toggle('is-expanded', !item.collapsed);
+    collapseIcon.setAttribute('aria-pressed', (!item.collapsed).toString());
+    collapseIcon.setAttribute('aria-label', item.collapsed ? '展開' : '折りたたみ');
+    collapseIcon.setAttribute('role', 'button');
+    collapseIcon.setAttribute('tabindex', '0');
+    collapseIcon.addEventListener('click', (e) => {
+      e.stopPropagation();
+      toggleCollapse(item.id);
+    });
+    collapseIcon.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        e.stopPropagation();
+        toggleCollapse(item.id);
+      }
+    });
+  }
+  
   // Content (contenteditable)
   const content = document.createElement('div');
   content.className = 'task-content';
@@ -3127,7 +3215,15 @@ function renderItem(item) {
   // Setup content event handlers
   setupContentHandlers(content, item, li);
   
-  li.appendChild(content);
+  if (item.type === 'collapsible-heading' && collapseIcon) {
+    const headingWrapper = document.createElement('div');
+    headingWrapper.className = 'collapsible-heading-wrapper';
+    headingWrapper.appendChild(content);
+    headingWrapper.appendChild(collapseIcon);
+    li.appendChild(headingWrapper);
+  } else {
+    li.appendChild(content);
+  }
   
   // Deadline indicator
   if (item.deadline) {
@@ -3246,6 +3342,7 @@ window.addEventListener('blur', hideDeadlineTooltip);
 function getAriaLabel(type) {
   switch(type) {
     case 'heading': return '見出し';
+    case 'collapsible-heading': return '折りたたみ見出し';
     case 'checkbox': return 'チェックボックス';
     case 'list': return 'リスト項目';
     default: return 'テキスト';
@@ -3254,7 +3351,7 @@ function getAriaLabel(type) {
 
 // Get placeholder based on type
 function getPlaceholder() {
-  return '[/h]Header, [/c]Check, [/-]List, [/_]Line';
+  return '[/h]Header, [/b]Collapsible, [/c]Check, [/-]List, [/_]Line';
 }
 
 // Setup content event handlers
@@ -3352,7 +3449,7 @@ function setupContentHandlers(content, item, li) {
 // Handle slash commands
 function handleSlashCommand(text, item, li, content) {
   const trimmed = text.trim();
-  const commands = ['/c', '/c/', '/h', '/h/', '/-', '/-/', '/_', '/_/'];
+  const commands = ['/c', '/c/', '/h', '/h/', '/-', '/-/', '/_', '/_/', '/b', '/b/'];
   if (!commands.includes(trimmed)) return;
 
   const clearSlash = () => {
@@ -3360,7 +3457,13 @@ function handleSlashCommand(text, item, li, content) {
     item.text = '';
   };
   
-  if (trimmed.startsWith('/c')) {
+  if (trimmed.startsWith('/b')) {
+    // Convert to collapsible-heading
+    clearSlash();
+    updateItem(item.id, { type: 'collapsible-heading', text: '', collapsed: false }, () => {
+      setTimeout(() => focusItem(item.id), 100);
+    });
+  } else if (trimmed.startsWith('/c')) {
     // Convert to checkbox
     clearSlash();
     updateItem(item.id, { type: 'checkbox', text: '' }, () => {

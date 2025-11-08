@@ -122,6 +122,80 @@ li[data-type="heading"] .task-content {
   width: 100%;
 }
 
+/* Collapsible heading styling - same as heading but with collapse icon */
+li[data-type="collapsible-heading"] {
+  padding-bottom: 2px;
+  margin-bottom: 2px;
+}
+
+li[data-type="collapsible-heading"] .collapsible-heading-wrapper {
+  display: flex;
+  align-items: center;
+  flex: 1;
+  width: 100%;
+  border-bottom: 1px solid rgba(30, 58, 95, 0.35);
+  padding-bottom: 3px;
+  margin-bottom: 0;
+  margin-left: -6px;
+  padding-left: 6px;
+}
+
+li[data-type="collapsible-heading"] .task-content {
+  font-size: 13px;
+  font-weight: 600;
+  color: #1E3A5F;
+  margin: 0;
+  padding: 0;
+  flex: 1;
+}
+
+/* Collapse icon for collapsible heading */
+.collapse-icon {
+  color: #999;
+  font-size: 12px;
+  line-height: 1;
+  font-family: "Segoe Fluent Icons", "Segoe MDL2 Assets", sans-serif;
+  flex-shrink: 0;
+  user-select: none;
+  width: 20px;
+  height: 18px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  padding: 0;
+  border-radius: 3px;
+  background: transparent;
+  transition: color 0.15s ease, transform 0.1s ease, background-color 0.15s ease;
+  margin-right: 2px;
+}
+
+.collapse-icon:hover {
+  color: #666;
+  transform: scale(1.1);
+}
+
+.collapse-icon:focus {
+  outline: 2px solid rgba(74, 163, 255, 0.5);
+  outline-offset: 2px;
+  border-radius: 2px;
+}
+
+li[data-type="collapsible-heading"] .collapse-icon {
+  margin-left: 8px;
+  margin-right: 0;
+}
+
+.collapse-icon.is-expanded {
+  background: rgba(74, 163, 255, 0.18);
+  color: #2a7bd6;
+}
+
+.collapse-icon.is-collapsed {
+  background: transparent;
+  color: #999;
+}
+
 /* Horizontal rule styling - thin line */
 li.hr {
   padding: 0;
