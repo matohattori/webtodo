@@ -135,15 +135,13 @@ li[data-type="collapsible-heading"] .task-content {
   border-bottom: 1px solid rgba(30, 58, 95, 0.35);
   padding-bottom: 3px;
   margin-bottom: 0;
-  margin-left: -6px;
-  padding-left: 6px;
   display: block;
   width: 100%;
 }
 
 /* Collapse icon for collapsible heading */
 .collapse-icon {
-  color: #666;
+  color: #999;
   font-size: 12px;
   line-height: 1;
   flex-shrink: 0;
@@ -152,10 +150,11 @@ li[data-type="collapsible-heading"] .task-content {
   text-align: center;
   cursor: pointer;
   transition: color 0.15s ease, transform 0.1s ease;
+  margin-right: 2px;
 }
 
 .collapse-icon:hover {
-  color: #333;
+  color: #666;
   transform: scale(1.1);
 }
 

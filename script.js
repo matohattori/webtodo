@@ -3337,7 +3337,7 @@ function getAriaLabel(type) {
 
 // Get placeholder based on type
 function getPlaceholder() {
-  return '[/h]Header, [/ch]Collapsible, [/c]Check, [/-]List, [/_]Line';
+  return '[/h]Header, [/b]Collapsible, [/c]Check, [/-]List, [/_]Line';
 }
 
 // Setup content event handlers
@@ -3435,7 +3435,7 @@ function setupContentHandlers(content, item, li) {
 // Handle slash commands
 function handleSlashCommand(text, item, li, content) {
   const trimmed = text.trim();
-  const commands = ['/c', '/c/', '/h', '/h/', '/-', '/-/', '/_', '/_/', '/ch', '/ch/'];
+  const commands = ['/c', '/c/', '/h', '/h/', '/-', '/-/', '/_', '/_/', '/b', '/b/'];
   if (!commands.includes(trimmed)) return;
 
   const clearSlash = () => {
@@ -3443,7 +3443,7 @@ function handleSlashCommand(text, item, li, content) {
     item.text = '';
   };
   
-  if (trimmed.startsWith('/ch')) {
+  if (trimmed.startsWith('/b')) {
     // Convert to collapsible-heading
     clearSlash();
     updateItem(item.id, { type: 'collapsible-heading', text: '', collapsed: false }, () => {
