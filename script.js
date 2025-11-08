@@ -173,6 +173,201 @@ function handleAuthError(retryCallback) {
   });
 }
 
+// Settings dialog for password management
+function showSettingsDialog() {
+  const overlay = document.createElement('div');
+  overlay.className = 'settings-dialog-overlay';
+  overlay.style.cssText = `
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.5);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 10000;
+  `;
+  
+  const dialog = document.createElement('div');
+  dialog.className = 'settings-dialog';
+  dialog.style.cssText = `
+    background: white;
+    padding: 24px;
+    border-radius: 8px;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
+    max-width: 500px;
+    width: 90%;
+  `;
+  
+  const title = document.createElement('h2');
+  title.textContent = '設定';
+  title.style.cssText = 'margin: 0 0 16px 0; font-size: 18px;';
+  
+  const uidSection = document.createElement('div');
+  uidSection.style.cssText = 'margin-bottom: 24px; padding: 12px; background: #f5f5f5; border-radius: 4px;';
+  
+  const uidLabel = document.createElement('div');
+  uidLabel.textContent = 'あなたのUID:';
+  uidLabel.style.cssText = 'font-size: 13px; color: #666; margin-bottom: 4px;';
+  
+  const uidValue = document.createElement('div');
+  uidValue.textContent = userUID;
+  uidValue.style.cssText = 'font-family: monospace; font-size: 12px; color: #333; word-break: break-all;';
+  
+  const uidNote = document.createElement('div');
+  uidNote.textContent = '※このUIDで個別のデータベースが管理されています';
+  uidNote.style.cssText = 'font-size: 11px; color: #999; margin-top: 4px;';
+  
+  uidSection.appendChild(uidLabel);
+  uidSection.appendChild(uidValue);
+  uidSection.appendChild(uidNote);
+  
+  const passwordSection = document.createElement('div');
+  passwordSection.style.cssText = 'margin-bottom: 16px;';
+  
+  const passwordTitle = document.createElement('h3');
+  passwordTitle.textContent = 'パスワード設定';
+  passwordTitle.style.cssText = 'margin: 0 0 12px 0; font-size: 15px;';
+  
+  const currentPasswordLabel = document.createElement('label');
+  currentPasswordLabel.textContent = '現在のパスワード (変更時のみ):';
+  currentPasswordLabel.style.cssText = 'display: block; font-size: 13px; margin-bottom: 4px;';
+  
+  const currentPasswordInput = document.createElement('input');
+  currentPasswordInput.type = 'password';
+  currentPasswordInput.placeholder = '現在のパスワード';
+  currentPasswordInput.style.cssText = `
+    width: 100%;
+    padding: 8px 12px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    font-size: 14px;
+    box-sizing: border-box;
+    margin-bottom: 12px;
+  `;
+  
+  const newPasswordLabel = document.createElement('label');
+  newPasswordLabel.textContent = '新しいパスワード:';
+  newPasswordLabel.style.cssText = 'display: block; font-size: 13px; margin-bottom: 4px;';
+  
+  const newPasswordInput = document.createElement('input');
+  newPasswordInput.type = 'password';
+  newPasswordInput.placeholder = '新しいパスワード';
+  newPasswordInput.style.cssText = `
+    width: 100%;
+    padding: 8px 12px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    font-size: 14px;
+    box-sizing: border-box;
+    margin-bottom: 12px;
+  `;
+  
+  const error = document.createElement('div');
+  error.style.cssText = 'color: #d00; font-size: 13px; margin-bottom: 12px; min-height: 20px;';
+  
+  const success = document.createElement('div');
+  success.style.cssText = 'color: #0a0; font-size: 13px; margin-bottom: 12px; min-height: 20px;';
+  
+  const setPasswordBtn = document.createElement('button');
+  setPasswordBtn.textContent = 'パスワードを設定';
+  setPasswordBtn.style.cssText = `
+    padding: 8px 16px;
+    background: #4a90e2;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 14px;
+    margin-bottom: 16px;
+  `;
+  
+  setPasswordBtn.onclick = async () => {
+    const currentPassword = currentPasswordInput.value;
+    const newPassword = newPasswordInput.value;
+    
+    if (!newPassword) {
+      error.textContent = '新しいパスワードを入力してください';
+      success.textContent = '';
+      return;
+    }
+    
+    try {
+      const params = new URLSearchParams({ newpass: newPassword });
+      if (currentPassword) {
+        params.append('current', currentPassword);
+      }
+      
+      const response = await fetch(addUIDToURL('api.php?action=set_password'), {
+        method: 'POST',
+        headers: {'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8'},
+        body: params
+      });
+      
+      const data = await response.json();
+      
+      if (response.ok) {
+        error.textContent = '';
+        success.textContent = 'パスワードが設定されました';
+        currentPasswordInput.value = '';
+        newPasswordInput.value = '';
+      } else {
+        error.textContent = data.error || 'エラーが発生しました';
+        success.textContent = '';
+      }
+    } catch (err) {
+      console.error('Password set error:', err);
+      error.textContent = 'パスワード設定エラーが発生しました';
+      success.textContent = '';
+    }
+  };
+  
+  passwordSection.appendChild(passwordTitle);
+  passwordSection.appendChild(currentPasswordLabel);
+  passwordSection.appendChild(currentPasswordInput);
+  passwordSection.appendChild(newPasswordLabel);
+  passwordSection.appendChild(newPasswordInput);
+  passwordSection.appendChild(error);
+  passwordSection.appendChild(success);
+  passwordSection.appendChild(setPasswordBtn);
+  
+  const buttons = document.createElement('div');
+  buttons.style.cssText = 'display: flex; justify-content: flex-end; gap: 8px;';
+  
+  const closeBtn = document.createElement('button');
+  closeBtn.textContent = '閉じる';
+  closeBtn.style.cssText = `
+    padding: 8px 16px;
+    background: #ddd;
+    color: #333;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 14px;
+  `;
+  
+  closeBtn.onclick = () => {
+    overlay.remove();
+  };
+  
+  buttons.appendChild(closeBtn);
+  
+  dialog.appendChild(title);
+  dialog.appendChild(uidSection);
+  dialog.appendChild(passwordSection);
+  dialog.appendChild(buttons);
+  overlay.appendChild(dialog);
+  document.body.appendChild(overlay);
+  
+  overlay.addEventListener('click', (e) => {
+    if (e.target === overlay) {
+      overlay.remove();
+    }
+  });
+}
+
 // Wrap fetch to handle 401 responses
 const originalFetch = window.fetch;
 window.fetch = async function(...args) {
@@ -4328,6 +4523,12 @@ window.addEventListener('load', () => {
   if (toggleBtn) {
     toggleBtn.setAttribute('aria-pressed', 'false');
     toggleBtn.addEventListener('click', toggleReorderMode);
+  }
+  
+  // Setup settings button
+  const settingsBtn = document.getElementById('settingsToggle');
+  if (settingsBtn) {
+    settingsBtn.addEventListener('click', showSettingsDialog);
   }
   
   // Setup global keyboard shortcuts for undo/redo (when not focused on editable elements)

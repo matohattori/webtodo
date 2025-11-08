@@ -67,6 +67,37 @@ body {
   border-color: rgba(31, 95, 166, 0.55);
 }
 
+.settings-toggle {
+  position: fixed;
+  bottom: 24px;
+  right: 58px;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  color: #4f5f74;
+  border: 1px solid rgba(79, 95, 116, 0.35);
+  cursor: pointer;
+  box-shadow: none;
+  transition: background-color 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease, color 0.2s ease;
+  font-size: 13px;
+  line-height: 1;
+  z-index: 100;
+}
+
+.settings-toggle span {
+  pointer-events: none;
+  font-family: "Segoe Fluent Icons", "Segoe MDL2 Assets", sans-serif;
+}
+
+.settings-toggle:hover {
+  color: #2f3c4d;
+  border-color: rgba(47, 60, 77, 0.45);
+}
+
 ul {
   list-style: none;
   padding: 0;
