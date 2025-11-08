@@ -435,7 +435,7 @@ body.reorder-mode input[type="checkbox"] {
 }
 
 .context-menu-item {
-  padding: 6px 12px;
+  padding: 7px 12px;
   cursor: pointer;
   display: flex;
   align-items: center;
@@ -447,6 +447,65 @@ body.reorder-mode input[type="checkbox"] {
 
 .context-menu-item:hover {
   background-color: #f0f0f0;
+}
+
+.context-menu-item.has-submenu {
+  position: relative;
+  padding-right: 28px;
+}
+
+.context-submenu-arrow {
+  font-size: 11px;
+  color: #888;
+}
+
+.context-submenu {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  background: #fff;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+  padding: 4px 0;
+  min-width: 180px;
+  opacity: 0;
+  visibility: hidden;
+  transform: translateY(-4px);
+  transition: opacity 0.15s ease, transform 0.15s ease;
+  pointer-events: none;
+  z-index: 1001;
+}
+
+.context-menu-item.has-submenu:hover > .context-submenu,
+.context-menu-item.has-submenu:focus-within > .context-submenu {
+  opacity: 1;
+  visibility: visible;
+  transform: translateY(0);
+  pointer-events: auto;
+}
+
+.context-submenu-item {
+  padding: 7px 12px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  font-size: 12px;
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+}
+
+.context-submenu-item:hover {
+  background-color: #f0f0f0;
+}
+
+.context-menu-inline-separator,
+.context-menu-separator {
+  height: 0;
+  border-top: 1px solid #e5e5e5;
+  margin: 6px 10px;
+  padding: 0;
 }
 
 .context-menu-item-label {
@@ -534,12 +593,6 @@ body.reorder-mode input[type="checkbox"] {
 
 .decoration-preset-item.selected {
   background-color: #e8f4ff;
-}
-
-.context-menu-separator {
-  border-top: 1px solid #ddd;
-  margin-top: 4px;
-  padding-top: 8px;
 }
 
 /* Preset settings dialog */
