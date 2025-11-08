@@ -11,6 +11,9 @@ let decorationPresets = [];
 
 const list = document.getElementById('todoList');
 
+// Segoe Fluent icon code for collapsible headings (ChevronDown)
+const COLLAPSE_ICON_GLYPH = '\uE96E';
+
 // Default decoration presets
 const DEFAULT_PRESETS = [
   { id: 'important', name: '重要', bold: true, italic: false, color: '#FF0000', shortcut: '1' }
@@ -3136,11 +3139,15 @@ function renderItem(item) {
     li.appendChild(bullet);
   }
   
+  let collapseIcon = null;
   // Collapse icon for collapsible-heading type
   if (item.type === 'collapsible-heading') {
-    const collapseIcon = document.createElement('span');
+    collapseIcon = document.createElement('span');
     collapseIcon.className = 'collapse-icon';
-    collapseIcon.textContent = item.collapsed ? '▶' : '▼';
+    collapseIcon.textContent = COLLAPSE_ICON_GLYPH;
+    collapseIcon.classList.toggle('is-collapsed', item.collapsed);
+    collapseIcon.classList.toggle('is-expanded', !item.collapsed);
+    collapseIcon.setAttribute('aria-pressed', (!item.collapsed).toString());
     collapseIcon.setAttribute('aria-label', item.collapsed ? '展開' : '折りたたみ');
     collapseIcon.setAttribute('role', 'button');
     collapseIcon.setAttribute('tabindex', '0');
@@ -3155,7 +3162,6 @@ function renderItem(item) {
         toggleCollapse(item.id);
       }
     });
-    li.appendChild(collapseIcon);
   }
   
   // Content (contenteditable)
@@ -3209,7 +3215,15 @@ function renderItem(item) {
   // Setup content event handlers
   setupContentHandlers(content, item, li);
   
-  li.appendChild(content);
+  if (item.type === 'collapsible-heading' && collapseIcon) {
+    const headingWrapper = document.createElement('div');
+    headingWrapper.className = 'collapsible-heading-wrapper';
+    headingWrapper.appendChild(content);
+    headingWrapper.appendChild(collapseIcon);
+    li.appendChild(headingWrapper);
+  } else {
+    li.appendChild(content);
+  }
   
   // Deadline indicator
   if (item.deadline) {
