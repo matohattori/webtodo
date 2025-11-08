@@ -14,6 +14,21 @@ const list = document.getElementById('todoList');
 // Segoe Fluent icon code for collapsible headings (ChevronDown)
 const COLLAPSE_ICON_GLYPH = '\uE96E';
 
+const FORMAT_MENU_OPTIONS = [
+  { type: 'heading', label: '見出し', command: '/h' },
+  { type: 'collapsible-heading', label: '折りたたみ見出し', command: '/b' },
+  { type: 'checkbox', label: 'チェックボックス', command: '/c' },
+  { type: 'list', label: '箇条書き', command: '/-' },
+  { type: 'hr', label: '水平線', command: '/_' },
+];
+
+const SLASH_COMMAND_MAP = FORMAT_MENU_OPTIONS.reduce((map, option) => {
+  map[option.command] = option.type;
+  map[`${option.command}/`] = option.type;
+  return map;
+}, {});
+
+
 // Default decoration presets
 const DEFAULT_PRESETS = [
   { id: 'important', name: '重要', bold: true, italic: false, color: '#FF0000', shortcut: '1' }
@@ -1674,10 +1689,7 @@ function showDecorationPresetsMenu(e, item) {
   
   // Add separator before deadline
   const separator = document.createElement('div');
-  separator.className = 'context-menu-separator';
-  separator.style.borderTop = '1px solid #ddd';
-  separator.style.margin = '4px 0';
-  separator.style.height = '1px';
+  separator.className = 'context-menu-inline-separator';
   contextMenu.appendChild(separator);
   
   // Add deadline menu item
@@ -1699,6 +1711,55 @@ function showDecorationPresetsMenu(e, item) {
     promptForDeadline(item);
   });
   contextMenu.appendChild(deadlineItem);
+
+  const formatSeparator = document.createElement('div');
+  formatSeparator.className = 'context-menu-inline-separator';
+  contextMenu.appendChild(formatSeparator);
+
+  if (FORMAT_MENU_OPTIONS.length > 0) {
+    const formattingItem = document.createElement('div');
+    formattingItem.className = 'context-menu-item has-submenu formatting-menu-item';
+  
+    const formattingLabel = document.createElement('span');
+    formattingLabel.className = 'context-menu-item-label';
+    formattingLabel.textContent = '書式設定';
+    formattingItem.appendChild(formattingLabel);
+  
+    const arrow = document.createElement('span');
+    arrow.className = 'context-submenu-arrow';
+    arrow.textContent = '›';
+    formattingItem.appendChild(arrow);
+  
+    const submenu = document.createElement('div');
+    submenu.className = 'context-submenu';
+  
+    FORMAT_MENU_OPTIONS.forEach(option => {
+      const submenuItem = document.createElement('div');
+      submenuItem.className = 'context-submenu-item';
+  
+      const label = document.createElement('span');
+      label.className = 'context-menu-item-label';
+      label.textContent = option.label;
+      submenuItem.appendChild(label);
+  
+      const shortcut = document.createElement('span');
+      shortcut.className = 'context-menu-shortcut';
+      shortcut.textContent = option.command;
+      submenuItem.appendChild(shortcut);
+  
+      submenuItem.addEventListener('click', (event) => {
+        event.stopPropagation();
+        const shouldClear = option.type === 'hr';
+        convertItemFormat(item, option.type, { clearText: shouldClear });
+        removeContextMenu();
+      });
+  
+      submenu.appendChild(submenuItem);
+    });
+  
+    formattingItem.appendChild(submenu);
+    contextMenu.appendChild(formattingItem);
+  }
   
   contextMenu.style.left = `${e.pageX}px`;
   contextMenu.style.top = `${e.pageY}px`;
@@ -3446,52 +3507,49 @@ function setupContentHandlers(content, item, li) {
   });
 }
 
-// Handle slash commands
-function handleSlashCommand(text, item, li, content) {
-  const trimmed = text.trim();
-  const commands = ['/c', '/c/', '/h', '/h/', '/-', '/-/', '/_', '/_/', '/b', '/b/'];
-  if (!commands.includes(trimmed)) return;
-
-  const clearSlash = () => {
-    content.textContent = '';
-    item.text = '';
-  };
+function convertItemFormat(item, formatType, options = {}) {
+  if (!item) return;
+  const { clearText = false } = options;
+  const updates = { type: formatType };
   
-  if (trimmed.startsWith('/b')) {
-    // Convert to collapsible-heading
-    clearSlash();
-    updateItem(item.id, { type: 'collapsible-heading', text: '', collapsed: false }, () => {
-      setTimeout(() => focusItem(item.id), 100);
-    });
-  } else if (trimmed.startsWith('/c')) {
-    // Convert to checkbox
-    clearSlash();
-    updateItem(item.id, { type: 'checkbox', text: '' }, () => {
-      setTimeout(() => focusItem(item.id), 100);
-    });
-  } else if (trimmed.startsWith('/h')) {
-    // Convert to heading without inserting hr
-    clearSlash();
-    updateItem(item.id, { type: 'heading', text: '' }, () => {
-      setTimeout(() => focusItem(item.id), 100);
-    });
-  } else if (trimmed.startsWith('/-')) {
-    // Convert to list
-    clearSlash();
-    updateItem(item.id, { type: 'list', text: '' }, () => {
-      setTimeout(() => focusItem(item.id), 100);
-    });
-  } else if (trimmed.startsWith('/_')) {
-    clearSlash();
-    // Convert to horizontal rule
-    updateItem(item.id, { type: 'hr', text: '' }, () => {
-      // Focus next item
+  if (formatType === 'collapsible-heading') {
+    updates.collapsed = false;
+    item.collapsed = false;
+  }
+  
+  if (formatType === 'checkbox') {
+    updates.checked = false;
+    item.checked = false;
+  }
+  
+  if (clearText || formatType === 'hr') {
+    updates.text = '';
+    item.text = '';
+  }
+  
+  const focusAfterUpdate = () => {
+    if (formatType === 'hr') {
       const nextItem = items.find(i => i.order > item.order);
       if (nextItem) {
         setTimeout(() => focusItem(nextItem.id), 100);
       }
-    });
-  }
+    } else {
+      setTimeout(() => focusItem(item.id), 100);
+    }
+  };
+  
+  updateItem(item.id, updates, focusAfterUpdate);
+}
+
+// Handle slash commands
+function handleSlashCommand(text, item, li, content) {
+  const trimmed = text.trim();
+  const formatType = SLASH_COMMAND_MAP[trimmed];
+  if (!formatType) return;
+  
+  content.textContent = '';
+  item.text = '';
+  convertItemFormat(item, formatType, { clearText: true });
 }
 
 // Handle keydown events
