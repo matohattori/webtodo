@@ -4,6 +4,206 @@
 // deadline: ISO date string or null
 // collapsed: boolean (only for collapsible-heading)
 
+// UID Management for per-user database separation
+let userUID = null;
+
+// Get or create UID for current user
+function getOrCreateUID() {
+  // Check if UID exists in cookie
+  const cookieUID = getCookie('webtodo_uid');
+  if (cookieUID) {
+    return cookieUID;
+  }
+  
+  // Generate new UID using crypto.randomUUID()
+  const newUID = crypto.randomUUID();
+  
+  // Store in cookie (expires in 10 years)
+  setCookie('webtodo_uid', newUID, 365 * 10);
+  
+  return newUID;
+}
+
+// Get cookie value
+function getCookie(name) {
+  const value = `; ${document.cookie}`;
+  const parts = value.split(`; ${name}=`);
+  if (parts.length === 2) return parts.pop().split(';').shift();
+  return null;
+}
+
+// Set cookie
+function setCookie(name, value, days) {
+  const date = new Date();
+  date.setTime(date.getTime() + (days * 24 * 60 * 60 * 1000));
+  const expires = `expires=${date.toUTCString()}`;
+  document.cookie = `${name}=${value};${expires};path=/;SameSite=Strict`;
+}
+
+// Add UID parameter to API URL
+function addUIDToURL(url) {
+  const separator = url.includes('?') ? '&' : '?';
+  return `${url}${separator}uid=${encodeURIComponent(userUID)}`;
+}
+
+// Authentication management
+let authDialogShown = false;
+
+// Show password prompt dialog
+function showPasswordPrompt(callback) {
+  if (authDialogShown) return;
+  authDialogShown = true;
+  
+  const overlay = document.createElement('div');
+  overlay.className = 'auth-dialog-overlay';
+  overlay.style.cssText = `
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.5);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 10000;
+  `;
+  
+  const dialog = document.createElement('div');
+  dialog.className = 'auth-dialog';
+  dialog.style.cssText = `
+    background: white;
+    padding: 24px;
+    border-radius: 8px;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
+    max-width: 400px;
+    width: 90%;
+  `;
+  
+  const title = document.createElement('h2');
+  title.textContent = 'パスワード認証';
+  title.style.cssText = 'margin: 0 0 16px 0; font-size: 18px;';
+  
+  const message = document.createElement('p');
+  message.textContent = 'このデータベースにはパスワードが設定されています。パスワードを入力してください。';
+  message.style.cssText = 'margin: 0 0 16px 0; color: #666; font-size: 14px;';
+  
+  const input = document.createElement('input');
+  input.type = 'password';
+  input.placeholder = 'パスワード';
+  input.style.cssText = `
+    width: 100%;
+    padding: 8px 12px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    font-size: 14px;
+    box-sizing: border-box;
+    margin-bottom: 16px;
+  `;
+  
+  const error = document.createElement('div');
+  error.style.cssText = 'color: #d00; font-size: 13px; margin-bottom: 16px; min-height: 20px;';
+  
+  const buttons = document.createElement('div');
+  buttons.style.cssText = 'display: flex; justify-content: flex-end; gap: 8px;';
+  
+  const submitBtn = document.createElement('button');
+  submitBtn.textContent = 'ログイン';
+  submitBtn.style.cssText = `
+    padding: 8px 16px;
+    background: #4a90e2;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 14px;
+  `;
+  
+  submitBtn.onclick = async () => {
+    const password = input.value;
+    if (!password) {
+      error.textContent = 'パスワードを入力してください';
+      return;
+    }
+    
+    try {
+      const response = await fetch(addUIDToURL('api.php?action=auth'), {
+        method: 'POST',
+        headers: {'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8'},
+        body: new URLSearchParams({ password })
+      });
+      
+      if (response.ok) {
+        overlay.remove();
+        authDialogShown = false;
+        if (callback) callback();
+      } else {
+        error.textContent = 'パスワードが正しくありません';
+        input.value = '';
+        input.focus();
+      }
+    } catch (err) {
+      console.error('Authentication error:', err);
+      error.textContent = '認証エラーが発生しました';
+    }
+  };
+  
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+      submitBtn.click();
+    }
+  });
+  
+  buttons.appendChild(submitBtn);
+  dialog.appendChild(title);
+  dialog.appendChild(message);
+  dialog.appendChild(input);
+  dialog.appendChild(error);
+  dialog.appendChild(buttons);
+  overlay.appendChild(dialog);
+  document.body.appendChild(overlay);
+  
+  setTimeout(() => input.focus(), 100);
+}
+
+// Handle authentication errors (401)
+function handleAuthError(retryCallback) {
+  showPasswordPrompt(() => {
+    if (retryCallback) retryCallback();
+  });
+}
+
+// Wrap fetch to handle 401 responses
+const originalFetch = window.fetch;
+window.fetch = async function(...args) {
+  try {
+    const response = await originalFetch.apply(this, args);
+    
+    // Check for 401 Unauthorized
+    if (response.status === 401) {
+      const clonedResponse = response.clone();
+      try {
+        const data = await clonedResponse.json();
+        if (data.auth_required) {
+          // Show password prompt and retry
+          return new Promise((resolve) => {
+            handleAuthError(() => {
+              // Retry the original request
+              originalFetch.apply(this, args).then(resolve);
+            });
+          });
+        }
+      } catch (e) {
+        // Not JSON, continue with original response
+      }
+    }
+    
+    return response;
+  } catch (error) {
+    throw error;
+  }
+};
+
 let items = [];
 let undoStack = [];
 let redoStack = [];
@@ -858,7 +1058,7 @@ function commitFormattingChange(content, item, options = {}) {
 
 // Load from SQLite3 via API
 function loadItems(callback) {
-  fetch('api.php?action=list', {cache: 'no-store'})
+  fetch(addUIDToURL('api.php?action=list'), {cache: 'no-store'})
     .then(r => r.json())
     .then(data => {
       items = data.map(row => ({
@@ -902,7 +1102,7 @@ function createItem(type = 'text', text = '', afterId = null, callback, options 
   if (afterId) params.append('after_id', afterId);
   if (options.allowEmpty) params.append('allow_empty', '1');
 
-  fetch('api.php?action=add', {
+  fetch(addUIDToURL('api.php?action=add'), {
     method: 'POST',
     headers: {'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8'},
     body: params
@@ -951,7 +1151,7 @@ function updateItem(id, updates, callback, options = {}) {
       done: updates.checked ? '1' : '0'
     });
     
-    fetch('api.php?action=toggle', {
+    fetch(addUIDToURL('api.php?action=toggle'), {
       method: 'POST',
       headers: {'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8'},
       body: params
@@ -988,7 +1188,7 @@ function updateItem(id, updates, callback, options = {}) {
     params.append('collapsed', updates.collapsed ? '1' : '0');
   }
   
-  fetch('api.php?action=edit', {
+  fetch(addUIDToURL('api.php?action=edit'), {
     method: 'POST',
     headers: {'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8'},
     body: params
@@ -1032,7 +1232,7 @@ function deleteItem(id) {
     captureStateForUndo('delete', { id });
     
     const params = new URLSearchParams({id: id.toString()});
-    fetch('api.php?action=delete', {
+    fetch(addUIDToURL('api.php?action=delete'), {
       method: 'POST',
       headers: {'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8'},
       body: params
@@ -1062,7 +1262,7 @@ function reorderItems(callback) {
   
   const params = new URLSearchParams({order: JSON.stringify(order)});
   
-  fetch('api.php?action=reorder', {
+  fetch(addUIDToURL('api.php?action=reorder'), {
     method: 'POST',
     headers: {'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8'},
     body: params
@@ -2197,7 +2397,7 @@ async function openWebLink(url) {
   if (!url) return;
   try {
     const params = new URLSearchParams({ url });
-    const response = await fetch('api.php?action=open_link', {
+    const response = await fetch(addUIDToURL('api.php?action=open_link'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8' },
       body: params
@@ -4117,6 +4317,9 @@ function handleDrop(e) {
 
 // Initialize
 window.addEventListener('load', () => {
+  // Initialize UID first
+  userUID = getOrCreateUID();
+  
   loadPresets();
   loadItems();
   

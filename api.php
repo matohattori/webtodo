@@ -2,47 +2,124 @@
 // Simple PHP + SQLite3 API (PDOなし)
 declare(strict_types=1);
 
+// Start session for authentication
+session_start();
+
 header('Access-Control-Allow-Origin: *');
 
-$dbPath = __DIR__ . DIRECTORY_SEPARATOR . 'todo.db';
+// Get and validate UID from query parameter
+$uid = $_GET['uid'] ?? 'public';
+
+// Validate UID: alphanumeric, hyphens only (security: prevent directory traversal)
+if (!preg_match('/^[a-zA-Z0-9\-]+$/', $uid)) {
+  http_response_code(400);
+  header('Content-Type: application/json; charset=utf-8');
+  echo json_encode(['error' => 'Invalid UID format']);
+  exit;
+}
+
+// Create data directory if it doesn't exist
+$dataDir = __DIR__ . DIRECTORY_SEPARATOR . 'data';
+if (!is_dir($dataDir)) {
+  mkdir($dataDir, 0755, true);
+}
+
+// User-specific database path
+$dbPath = $dataDir . DIRECTORY_SEPARATOR . 'todo_' . $uid . '.db';
 $db = new SQLite3($dbPath);
 
-// Create table if not exists
-$db->exec('CREATE TABLE IF NOT EXISTS todos (
-  id INTEGER PRIMARY KEY AUTOINCREMENT, 
-  text TEXT NOT NULL, 
-  done INTEGER NOT NULL DEFAULT 0
-)');
-
-// Add new columns if they don't exist (migration)
-$result = $db->query("PRAGMA table_info(todos)");
-$columns = [];
-while ($row = $result->fetchArray(SQLITE3_ASSOC)) {
-  $columns[] = $row['name'];
+// Initialize database schema
+function initializeDatabase($db): void {
+  // Create todos table if not exists
+  $db->exec('CREATE TABLE IF NOT EXISTS todos (
+    id INTEGER PRIMARY KEY AUTOINCREMENT, 
+    text TEXT NOT NULL, 
+    done INTEGER NOT NULL DEFAULT 0
+  )');
+  
+  // Create user_meta table for password storage
+  $db->exec('CREATE TABLE IF NOT EXISTS user_meta (
+    uid TEXT PRIMARY KEY,
+    pass_hash TEXT
+  )');
+  
+  // Add new columns if they don't exist (migration)
+  $result = $db->query("PRAGMA table_info(todos)");
+  $columns = [];
+  while ($row = $result->fetchArray(SQLITE3_ASSOC)) {
+    $columns[] = $row['name'];
+  }
+  
+  if (!in_array('type', $columns)) {
+    $db->exec('ALTER TABLE todos ADD COLUMN type TEXT NOT NULL DEFAULT "text"');
+    // Migrate old 'task' type to 'checkbox' for backward compatibility
+    $db->exec('UPDATE todos SET type = "checkbox" WHERE type = "task"');
+  }
+  if (!in_array('sort_order', $columns)) {
+    $db->exec('ALTER TABLE todos ADD COLUMN sort_order INTEGER NOT NULL DEFAULT 0');
+    // Set initial sort_order based on id
+    $db->exec('UPDATE todos SET sort_order = id WHERE sort_order = 0');
+  }
+  if (!in_array('parent_id', $columns)) {
+    $db->exec('ALTER TABLE todos ADD COLUMN parent_id INTEGER DEFAULT NULL');
+  }
+  if (!in_array('decoration', $columns)) {
+    $db->exec('ALTER TABLE todos ADD COLUMN decoration TEXT DEFAULT NULL');
+  }
+  if (!in_array('deadline', $columns)) {
+    $db->exec('ALTER TABLE todos ADD COLUMN deadline TEXT DEFAULT NULL');
+  }
+  if (!in_array('collapsed', $columns)) {
+    $db->exec('ALTER TABLE todos ADD COLUMN collapsed INTEGER NOT NULL DEFAULT 0');
+  }
 }
 
-if (!in_array('type', $columns)) {
-  $db->exec('ALTER TABLE todos ADD COLUMN type TEXT NOT NULL DEFAULT "text"');
-  // Migrate old 'task' type to 'checkbox' for backward compatibility
-  $db->exec('UPDATE todos SET type = "checkbox" WHERE type = "task"');
+// Check if password is set for this UID
+function hasPassword($db, $uid): bool {
+  $stmt = $db->prepare('SELECT pass_hash FROM user_meta WHERE uid = :uid');
+  $stmt->bindValue(':uid', $uid, SQLITE3_TEXT);
+  $result = $stmt->execute();
+  $row = $result->fetchArray(SQLITE3_ASSOC);
+  return $row !== false && !empty($row['pass_hash']);
 }
-if (!in_array('sort_order', $columns)) {
-  $db->exec('ALTER TABLE todos ADD COLUMN sort_order INTEGER NOT NULL DEFAULT 0');
-  // Set initial sort_order based on id
-  $db->exec('UPDATE todos SET sort_order = id WHERE sort_order = 0');
+
+// Verify password for this UID
+function verifyPassword($db, $uid, $password): bool {
+  $stmt = $db->prepare('SELECT pass_hash FROM user_meta WHERE uid = :uid');
+  $stmt->bindValue(':uid', $uid, SQLITE3_TEXT);
+  $result = $stmt->execute();
+  $row = $result->fetchArray(SQLITE3_ASSOC);
+  
+  if ($row === false || empty($row['pass_hash'])) {
+    return false;
+  }
+  
+  return password_verify($password, $row['pass_hash']);
 }
-if (!in_array('parent_id', $columns)) {
-  $db->exec('ALTER TABLE todos ADD COLUMN parent_id INTEGER DEFAULT NULL');
+
+// Check if user is authenticated for this UID
+function isAuthenticated($uid): bool {
+  return isset($_SESSION['auth_' . $uid]) && $_SESSION['auth_' . $uid] === true;
 }
-if (!in_array('decoration', $columns)) {
-  $db->exec('ALTER TABLE todos ADD COLUMN decoration TEXT DEFAULT NULL');
+
+// Require authentication - return 401 if not authenticated
+function requireAuth($db, $uid): void {
+  if (!hasPassword($db, $uid)) {
+    // No password set, allow access
+    return;
+  }
+  
+  if (!isAuthenticated($uid)) {
+    http_response_code(401);
+    header('Content-Type: application/json; charset=utf-8');
+    echo json_encode(['error' => 'Authentication required', 'auth_required' => true]);
+    exit;
+  }
 }
-if (!in_array('deadline', $columns)) {
-  $db->exec('ALTER TABLE todos ADD COLUMN deadline TEXT DEFAULT NULL');
-}
-if (!in_array('collapsed', $columns)) {
-  $db->exec('ALTER TABLE todos ADD COLUMN collapsed INTEGER NOT NULL DEFAULT 0');
-}
+
+// Initialize database
+initializeDatabase($db);
+
 $action = $_GET['action'] ?? '';
 
 function open_url_with_os(string $url): bool {
@@ -81,7 +158,75 @@ function open_url_with_os(string $url): bool {
 }
 
 switch ($action) {
+  case 'auth':
+    // Authenticate user with password
+    $password = $_POST['password'] ?? '';
+    
+    if (empty($password)) {
+      http_response_code(400);
+      header('Content-Type: application/json; charset=utf-8');
+      echo json_encode(['error' => 'Password required']);
+      break;
+    }
+    
+    if (verifyPassword($db, $uid, $password)) {
+      $_SESSION['auth_' . $uid] = true;
+      header('Content-Type: application/json; charset=utf-8');
+      echo json_encode(['success' => true, 'message' => 'Authenticated']);
+    } else {
+      http_response_code(401);
+      header('Content-Type: application/json; charset=utf-8');
+      echo json_encode(['error' => 'Invalid password']);
+    }
+    break;
+  
+  case 'set_password':
+    // Set or change password
+    $newPassword = $_POST['newpass'] ?? '';
+    $currentPassword = $_POST['current'] ?? '';
+    
+    if (empty($newPassword)) {
+      http_response_code(400);
+      header('Content-Type: application/json; charset=utf-8');
+      echo json_encode(['error' => 'New password required']);
+      break;
+    }
+    
+    // If password already exists, verify current password
+    if (hasPassword($db, $uid)) {
+      if (empty($currentPassword) || !verifyPassword($db, $uid, $currentPassword)) {
+        http_response_code(401);
+        header('Content-Type: application/json; charset=utf-8');
+        echo json_encode(['error' => 'Current password is incorrect']);
+        break;
+      }
+    }
+    
+    // Hash and store new password
+    $passHash = password_hash($newPassword, PASSWORD_DEFAULT);
+    $stmt = $db->prepare('INSERT OR REPLACE INTO user_meta (uid, pass_hash) VALUES (:uid, :pass_hash)');
+    $stmt->bindValue(':uid', $uid, SQLITE3_TEXT);
+    $stmt->bindValue(':pass_hash', $passHash, SQLITE3_TEXT);
+    $stmt->execute();
+    
+    // Automatically authenticate after setting password
+    $_SESSION['auth_' . $uid] = true;
+    
+    header('Content-Type: application/json; charset=utf-8');
+    echo json_encode(['success' => true, 'message' => 'Password set successfully']);
+    break;
+  
+  case 'check_auth':
+    // Check if authentication is required and if user is authenticated
+    header('Content-Type: application/json; charset=utf-8');
+    echo json_encode([
+      'has_password' => hasPassword($db, $uid),
+      'is_authenticated' => isAuthenticated($uid)
+    ]);
+    break;
+
   case 'list':
+    requireAuth($db, $uid);
     $res = $db->query('SELECT id, text, done, type, sort_order, parent_id, decoration, deadline, collapsed FROM todos ORDER BY sort_order ASC, id ASC');
     $rows = [];
     while ($row = $res->fetchArray(SQLITE3_ASSOC)) { $rows[] = $row; }
@@ -90,6 +235,7 @@ switch ($action) {
     break;
 
   case 'add':
+    requireAuth($db, $uid);
     $text = trim((string)($_POST['text'] ?? ''));
     $type = (string)($_POST['type'] ?? 'text');
     $after_id = isset($_POST['after_id']) ? (int)$_POST['after_id'] : null;
@@ -132,6 +278,7 @@ switch ($action) {
     break;
 
   case 'toggle':
+    requireAuth($db, $uid);
     $id = (int)($_POST['id'] ?? 0);
     $done = (int)($_POST['done'] ?? 0);
     $stmt = $db->prepare('UPDATE todos SET done = :done WHERE id = :id');
@@ -141,6 +288,7 @@ switch ($action) {
     break;
 
   case 'edit':
+    requireAuth($db, $uid);
     $id = (int)($_POST['id'] ?? 0);
     $textProvided = array_key_exists('text', $_POST);
     $text = $textProvided ? trim((string)$_POST['text']) : '';
@@ -192,6 +340,7 @@ switch ($action) {
     break;
 
   case 'delete':
+    requireAuth($db, $uid);
     $id = (int)($_POST['id'] ?? 0);
     $stmt = $db->prepare('DELETE FROM todos WHERE id = :id');
     $stmt->bindValue(':id', $id, SQLITE3_INTEGER);
@@ -199,6 +348,7 @@ switch ($action) {
     break;
 
   case 'reorder':
+    requireAuth($db, $uid);
     // Reorder items based on array of IDs
     $order = json_decode($_POST['order'] ?? '[]', true);
     if (is_array($order)) {
@@ -214,6 +364,7 @@ switch ($action) {
     break;
 
   case 'open_link':
+    requireAuth($db, $uid);
     $url = trim((string)($_POST['url'] ?? ''));
     $response = [
       'success' => false,
