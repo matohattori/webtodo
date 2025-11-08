@@ -1284,12 +1284,12 @@ function getDeadlineDisplay(deadlineStr) {
   if (days < 0) {
     // After deadline: +Xd, purple
     text = `+${Math.abs(days)}d`;
-    textColor = '#FFFFFF';
-    backgroundColor = '#800080';
+    textColor = '#ff8c00ff';
+    backgroundColor = '#a705a7ff';
   } else if (days === 0 || days === 1) {
     // -0d or -1d: red
     text = `-${days}d`;
-    textColor = '#FFFFFF';
+    textColor = '#000000';
     backgroundColor = '#FF0000';
   } else if (days >= 2 && days <= 7) {
     // -2d to -7d: yellow
@@ -1300,7 +1300,7 @@ function getDeadlineDisplay(deadlineStr) {
     // More than 7 days before: white
     text = `-${days}d`;
     textColor = '#000000';
-    backgroundColor = '#FFFFFF';
+    backgroundColor = '#00e1ffff';
   }
   return { text, textColor, backgroundColor, tooltip };
 }
