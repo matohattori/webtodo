@@ -4,6 +4,722 @@
 // deadline: ISO date string or null
 // collapsed: boolean (only for collapsible-heading)
 
+// User ID Management for per-user database separation
+let userID = null;
+let isLoggedIn = false;
+
+// Add UID parameter to API URL
+function addUIDToURL(url) {
+  const separator = url.includes('?') ? '&' : '?';
+  return `${url}${separator}uid=${encodeURIComponent(userID)}`;
+}
+
+// Authentication management
+let authDialogShown = false;
+
+// Show login screen
+function showLoginScreen() {
+  const overlay = document.createElement('div');
+  overlay.className = 'login-overlay';
+  overlay.style.cssText = `
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.35);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 16px;
+    z-index: 10000;
+  `;
+  
+  const dialog = document.createElement('div');
+  dialog.className = 'login-dialog';
+  dialog.style.cssText = `
+    background: white;
+    padding: 32px;
+    border-radius: 8px;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
+    max-width: 400px;
+    width: 90%;
+  `;
+  
+  const title = document.createElement('h2');
+  title.textContent = 'Web ToDo ログイン';
+  title.style.cssText = 'margin: 0 0 24px 0; font-size: 20px; text-align: center;';
+  
+  const idLabel = document.createElement('label');
+  idLabel.textContent = 'ユーザーID:';
+  idLabel.style.cssText = 'display: block; font-size: 14px; margin-bottom: 4px; font-weight: 500;';
+  
+  const idInput = document.createElement('input');
+  idInput.type = 'text';
+  idInput.placeholder = 'ユーザーID（英数字、ハイフンのみ）';
+  idInput.style.cssText = `
+    width: 100%;
+    padding: 10px 12px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    font-size: 14px;
+    box-sizing: border-box;
+    margin-bottom: 16px;
+  `;
+  
+  const passwordLabel = document.createElement('label');
+  passwordLabel.textContent = 'パスワード:';
+  passwordLabel.style.cssText = 'display: block; font-size: 14px; margin-bottom: 4px; font-weight: 500;';
+  
+  const passwordInput = document.createElement('input');
+  passwordInput.type = 'password';
+  passwordInput.placeholder = 'パスワード';
+  passwordInput.style.cssText = `
+    width: 100%;
+    padding: 10px 12px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    font-size: 14px;
+    box-sizing: border-box;
+    margin-bottom: 16px;
+  `;
+  
+  const error = document.createElement('div');
+  error.style.cssText = 'color: #d00; font-size: 13px; margin-bottom: 16px; min-height: 20px;';
+  
+  const info = document.createElement('div');
+  info.textContent = '※初めてのIDの場合、パスワードを設定して新規登録します';
+  info.style.cssText = 'color: #666; font-size: 12px; margin-bottom: 16px;';
+  
+  const loginBtn = document.createElement('button');
+  const loginButtonDefaultText = 'ログイン / 新規登録';
+  loginBtn.textContent = loginButtonDefaultText;
+  loginBtn.style.cssText = `
+    width: 100%;
+    padding: 12px;
+    background: #4a90e2;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 15px;
+    font-weight: 500;
+  `;
+  
+  const showRegistrationConfirmDialog = (userId) => {
+    return new Promise((resolve) => {
+      const confirmOverlay = document.createElement('div');
+      confirmOverlay.className = 'login-confirm-overlay';
+      confirmOverlay.style.cssText = `
+        position: fixed;
+        inset: 0;
+        background: rgba(0, 0, 0, 0.5);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 10001;
+      `;
+      
+      const confirmDialog = document.createElement('div');
+      confirmDialog.className = 'login-confirm-dialog';
+      confirmDialog.style.cssText = `
+        background: #fff;
+        padding: 24px;
+        border-radius: 8px;
+        width: min(360px, calc(100% - 48px));
+        box-shadow: 0 6px 24px rgba(0, 0, 0, 0.18);
+        box-sizing: border-box;
+        text-align: left;
+      `;
+      
+      const heading = document.createElement('h3');
+      heading.textContent = '新規登録の確認';
+      heading.style.cssText = 'margin: 0 0 12px; font-size: 18px; color: #1e3a5f;';
+      confirmDialog.appendChild(heading);
+      
+      const message = document.createElement('p');
+      message.textContent = `ユーザーID「${userId}」は未登録です。新規登録を実行してよろしいですか？`;
+      message.style.cssText = 'margin: 0 0 16px; font-size: 14px; color: #333; line-height: 1.6;';
+      confirmDialog.appendChild(message);
+      
+      const caution = document.createElement('p');
+      caution.textContent = '登録後はこのパスワードでログインできるようになります。';
+      caution.style.cssText = 'margin: 0 0 20px; font-size: 12px; color: #666;';
+      confirmDialog.appendChild(caution);
+      
+      const btnRow = document.createElement('div');
+      btnRow.style.cssText = 'display: flex; justify-content: flex-end; gap: 8px;';
+      
+      const cancelBtn = document.createElement('button');
+      cancelBtn.textContent = 'キャンセル';
+      cancelBtn.style.cssText = `
+        padding: 8px 14px;
+        border: 1px solid #ccc;
+        border-radius: 4px;
+        background: #fff;
+        color: #555;
+        cursor: pointer;
+        font-size: 13px;
+      `;
+      
+      const confirmBtn = document.createElement('button');
+      confirmBtn.textContent = '新規登録する';
+      confirmBtn.style.cssText = `
+        padding: 8px 16px;
+        border: none;
+        border-radius: 4px;
+        background: #4a90e2;
+        color: #fff;
+        cursor: pointer;
+        font-size: 13px;
+        font-weight: 600;
+      `;
+      
+      const cleanup = (result) => {
+        document.removeEventListener('keydown', handleKeyDown);
+        confirmOverlay.remove();
+        resolve(result);
+      };
+      
+      const handleKeyDown = (evt) => {
+        if (evt.key === 'Escape') {
+          evt.preventDefault();
+          cleanup(false);
+        } else if (evt.key === 'Enter') {
+          evt.preventDefault();
+          cleanup(true);
+        }
+      };
+      
+      cancelBtn.addEventListener('click', () => cleanup(false));
+      confirmBtn.addEventListener('click', () => cleanup(true));
+      confirmOverlay.addEventListener('click', (evt) => {
+        if (evt.target === confirmOverlay) {
+          cleanup(false);
+        }
+      });
+      
+      btnRow.appendChild(cancelBtn);
+      btnRow.appendChild(confirmBtn);
+      confirmDialog.appendChild(btnRow);
+      confirmOverlay.appendChild(confirmDialog);
+      document.body.appendChild(confirmOverlay);
+      document.addEventListener('keydown', handleKeyDown);
+      confirmBtn.focus();
+    });
+  };
+  
+  loginBtn.onclick = async () => {
+    const id = idInput.value.trim();
+    const password = passwordInput.value;
+    
+    if (!id) {
+      error.textContent = 'ユーザーIDを入力してください';
+      return;
+    }
+    
+    if (!/^[a-zA-Z0-9\-]+$/.test(id)) {
+      error.textContent = 'ユーザーIDは英数字とハイフンのみ使用できます';
+      return;
+    }
+    
+    if (!password) {
+      error.textContent = 'パスワードを入力してください';
+      return;
+    }
+    
+    try {
+      loginBtn.disabled = true;
+      loginBtn.textContent = '確認中...';
+      
+      let isNewRegistration = false;
+      try {
+        const status = await fetchUserAuthStatus(id);
+        isNewRegistration = status ? status.hasPassword === false : false;
+      } catch (statusError) {
+        console.warn('Failed to check registration state:', statusError);
+      }
+      
+      if (isNewRegistration) {
+        const confirmed = await showRegistrationConfirmDialog(id);
+        if (!confirmed) {
+          error.textContent = '新規登録をキャンセルしました';
+          loginBtn.disabled = false;
+          loginBtn.textContent = loginButtonDefaultText;
+          return;
+        }
+      }
+      
+      loginBtn.textContent = '処理中...';
+      
+      // Try to login with the provided credentials
+      const loginResponse = await fetch(`api.php?action=login&uid=${encodeURIComponent(id)}`, {
+        method: 'POST',
+        headers: {'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8'},
+        body: new URLSearchParams({ password })
+      });
+      
+      const data = await loginResponse.json();
+      
+      if (loginResponse.ok && data.success) {
+        // Login successful
+        userID = id;
+        isLoggedIn = true;
+        overlay.remove();
+        initializeApp();
+      } else {
+        if (loginResponse.status === 401) {
+          error.textContent = 'パスワードが違います。再度入力してください。';
+          passwordInput.value = '';
+          passwordInput.focus();
+        } else {
+          error.textContent = (data && data.error) ? data.error : 'ログインに失敗しました';
+        }
+        loginBtn.disabled = false;
+        loginBtn.textContent = loginButtonDefaultText;
+      }
+    } catch (err) {
+      console.error('Login error:', err);
+      error.textContent = 'ログインでエラーが発生しました';
+      loginBtn.disabled = false;
+      loginBtn.textContent = loginButtonDefaultText;
+    }
+  };
+  
+  const handleKeyDown = (e) => {
+    if (e.key === 'Enter') {
+      loginBtn.click();
+    }
+  };
+  
+  idInput.addEventListener('keydown', handleKeyDown);
+  passwordInput.addEventListener('keydown', handleKeyDown);
+  
+  dialog.appendChild(title);
+  dialog.appendChild(idLabel);
+  dialog.appendChild(idInput);
+  dialog.appendChild(passwordLabel);
+  dialog.appendChild(passwordInput);
+  dialog.appendChild(error);
+  dialog.appendChild(info);
+  dialog.appendChild(loginBtn);
+  overlay.appendChild(dialog);
+  document.body.appendChild(overlay);
+  
+  setTimeout(() => idInput.focus(), 100);
+}
+
+// Fetch whether the provided UID already has a password set
+async function fetchUserAuthStatus(uid) {
+  const response = await fetch(`api.php?action=check_auth&uid=${encodeURIComponent(uid)}`);
+  if (!response.ok) {
+    throw new Error(`Failed to fetch auth status: ${response.status}`);
+  }
+  const data = await response.json();
+  if (!data) return null;
+  return {
+    hasPassword: !!data.has_password,
+    isAuthenticated: !!data.is_authenticated
+  };
+}
+
+// Initialize the app after login
+function initializeApp() {
+  loadPresets();
+  loadItems();
+  
+  // Setup reorder toggle button if not already set up
+  const toggleBtn = document.getElementById('reorderToggle');
+  if (toggleBtn && !toggleBtn.hasAttribute('data-initialized')) {
+    toggleBtn.setAttribute('aria-pressed', 'false');
+    toggleBtn.addEventListener('click', toggleReorderMode);
+    toggleBtn.setAttribute('data-initialized', 'true');
+  }
+  
+  // Setup settings button if not already set up
+  const settingsBtn = document.getElementById('settingsToggle');
+  if (settingsBtn && !settingsBtn.hasAttribute('data-initialized')) {
+    settingsBtn.addEventListener('click', showSettingsDialog);
+    settingsBtn.setAttribute('data-initialized', 'true');
+  }
+}
+
+// Show password prompt dialog
+function showPasswordPrompt(callback) {
+  if (authDialogShown) return;
+  authDialogShown = true;
+  
+  const overlay = document.createElement('div');
+  overlay.className = 'auth-dialog-overlay';
+  overlay.style.cssText = `
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.5);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 10000;
+  `;
+  
+  const dialog = document.createElement('div');
+  dialog.className = 'auth-dialog';
+  dialog.style.cssText = `
+    background: white;
+    padding: 24px;
+    border-radius: 8px;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
+    max-width: 400px;
+    width: 90%;
+  `;
+  
+  const title = document.createElement('h2');
+  title.textContent = 'パスワード認証';
+  title.style.cssText = 'margin: 0 0 12px; font-size: 16px; text-align: center; color: #1e3a5f;';
+  
+  const message = document.createElement('p');
+  message.textContent = 'このデータベースにはパスワードが設定されています。パスワードを入力してください。';
+  message.style.cssText = 'margin: 0 0 16px 0; color: #666; font-size: 14px;';
+  
+  const input = document.createElement('input');
+  input.type = 'password';
+  input.placeholder = 'パスワード';
+  input.style.cssText = `
+    width: 100%;
+    padding: 8px 12px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    font-size: 14px;
+    box-sizing: border-box;
+    margin-bottom: 16px;
+  `;
+  
+  const error = document.createElement('div');
+  error.style.cssText = 'color: #d00; font-size: 13px; margin-bottom: 16px; min-height: 20px;';
+  
+  const buttons = document.createElement('div');
+  buttons.style.cssText = 'display: flex; justify-content: flex-end; gap: 8px;';
+  
+  const submitBtn = document.createElement('button');
+  submitBtn.textContent = 'ログイン';
+  submitBtn.style.cssText = `
+    padding: 8px 16px;
+    background: #4a90e2;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 14px;
+  `;
+  
+  submitBtn.onclick = async () => {
+    const password = input.value;
+    if (!password) {
+      error.textContent = 'パスワードを入力してください';
+      return;
+    }
+    
+    try {
+      const response = await fetch(addUIDToURL('api.php?action=auth'), {
+        method: 'POST',
+        headers: {'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8'},
+        body: new URLSearchParams({ password })
+      });
+      
+      if (response.ok) {
+        overlay.remove();
+        authDialogShown = false;
+        if (callback) callback();
+      } else {
+        error.textContent = 'パスワードが正しくありません';
+        input.value = '';
+        input.focus();
+      }
+    } catch (err) {
+      console.error('Authentication error:', err);
+      error.textContent = '認証エラーが発生しました';
+    }
+  };
+  
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+      submitBtn.click();
+    }
+  });
+  
+  buttons.appendChild(submitBtn);
+  dialog.appendChild(title);
+  dialog.appendChild(message);
+  dialog.appendChild(input);
+  dialog.appendChild(error);
+  dialog.appendChild(buttons);
+  overlay.appendChild(dialog);
+  document.body.appendChild(overlay);
+  
+  setTimeout(() => input.focus(), 100);
+}
+
+// Handle authentication errors (401)
+function handleAuthError(retryCallback) {
+  showPasswordPrompt(() => {
+    if (retryCallback) retryCallback();
+  });
+}
+
+// Settings dialog for password management
+function showSettingsDialog() {
+  const overlay = document.createElement('div');
+  overlay.className = 'settings-dialog-overlay';
+  overlay.style.cssText = `
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.5);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 10000;
+  `;
+  
+  const dialog = document.createElement('div');
+  dialog.className = 'settings-dialog';
+  dialog.style.cssText = `
+    background: #fff;
+    padding: 18px;
+    border-radius: 10px;
+    box-shadow: 0 12px 32px rgba(0, 0, 0, 0.18);
+    width: min(360px, 100%);
+    box-sizing: border-box;
+  `;
+  
+const title = document.createElement('h2');
+title.textContent = '設定';
+title.style.cssText = 'margin: 0 0 12px; font-size: 16px; text-align: center;';
+  
+  const uidSection = document.createElement('div');
+  uidSection.style.cssText = 'margin-bottom: 14px; padding: 10px 12px; background: #f4f7fb; border-radius: 6px;';
+  
+  const uidLabel = document.createElement('div');
+  uidLabel.textContent = 'ログイン中のユーザーID';
+  uidLabel.style.cssText = 'font-size: 12px; color: #556378; margin-bottom: 4px;';
+  
+  const uidValue = document.createElement('div');
+  uidValue.textContent = userID;
+  uidValue.style.cssText = 'font-family: "SFMono-Regular", Consolas, monospace; font-size: 13px; color: #1e3a5f; word-break: break-all;';
+  uidSection.appendChild(uidLabel);
+  uidSection.appendChild(uidValue);
+  
+  
+  const passwordSection = document.createElement('div');
+  passwordSection.style.cssText = 'margin-bottom: 10px;';
+  
+  const passwordTitle = document.createElement('h3');
+  passwordTitle.textContent = 'パスワード設定';
+  passwordTitle.style.cssText = 'margin: 0 0 10px; font-size: 14px; color: #1e3a5f;';
+  
+  const currentPasswordLabel = document.createElement('label');
+  currentPasswordLabel.textContent = '現在のパスワード (変更時のみ)';
+  currentPasswordLabel.style.cssText = 'display: block; font-size: 12px; margin-bottom: 4px; color: #4d5a6f;';
+  
+  const currentPasswordInput = document.createElement('input');
+  currentPasswordInput.type = 'password';
+  currentPasswordInput.placeholder = '現在のパスワード';
+  currentPasswordInput.style.cssText = `
+    width: 100%;
+    padding: 8px 12px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    font-size: 14px;
+    box-sizing: border-box;
+    margin-bottom: 12px;
+  `;
+  
+  const newPasswordLabel = document.createElement('label');
+  newPasswordLabel.textContent = '新しいパスワード';
+  newPasswordLabel.style.cssText = 'display: block; font-size: 12px; margin-bottom: 4px; color: #4d5a6f;';
+  
+  const newPasswordInput = document.createElement('input');
+  newPasswordInput.type = 'password';
+  newPasswordInput.placeholder = '新しいパスワード';
+  newPasswordInput.style.cssText = `
+    width: 100%;
+    padding: 8px 12px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    font-size: 14px;
+    box-sizing: border-box;
+    margin-bottom: 12px;
+  `;
+  
+  const error = document.createElement('div');
+  error.style.cssText = 'color: #d53f3f; font-size: 12px; margin-bottom: 8px; min-height: 18px;';
+  
+  const success = document.createElement('div');
+  success.style.cssText = 'color: #249944; font-size: 12px; margin-bottom: 8px; min-height: 18px;';
+  
+  const setPasswordBtn = document.createElement('button');
+  setPasswordBtn.textContent = 'パスワードを設定';
+  setPasswordBtn.style.cssText = `
+    padding: 8px 16px;
+    background: #4a90e2;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 14px;
+    margin-bottom: 16px;
+  `;
+  
+  setPasswordBtn.onclick = async () => {
+    const currentPassword = currentPasswordInput.value;
+    const newPassword = newPasswordInput.value;
+    
+    if (!newPassword) {
+      error.textContent = '新しいパスワードを入力してください';
+      success.textContent = '';
+      return;
+    }
+    
+    try {
+      const params = new URLSearchParams({ newpass: newPassword });
+      if (currentPassword) {
+        params.append('current', currentPassword);
+      }
+      
+      const response = await fetch(addUIDToURL('api.php?action=set_password'), {
+        method: 'POST',
+        headers: {'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8'},
+        body: params
+      });
+      
+      const data = await response.json();
+      
+      if (response.ok) {
+        error.textContent = '';
+        success.textContent = 'パスワードが設定されました';
+        currentPasswordInput.value = '';
+        newPasswordInput.value = '';
+      } else {
+        error.textContent = data.error || 'エラーが発生しました';
+        success.textContent = '';
+      }
+    } catch (err) {
+      console.error('Password set error:', err);
+      error.textContent = 'パスワード設定エラーが発生しました';
+      success.textContent = '';
+    }
+  };
+  
+  passwordSection.appendChild(passwordTitle);
+  passwordSection.appendChild(currentPasswordLabel);
+  passwordSection.appendChild(currentPasswordInput);
+  passwordSection.appendChild(newPasswordLabel);
+  passwordSection.appendChild(newPasswordInput);
+  passwordSection.appendChild(error);
+  passwordSection.appendChild(success);
+  passwordSection.appendChild(setPasswordBtn);
+  
+  const buttons = document.createElement('div');
+  buttons.style.cssText = 'display: flex; justify-content: space-between; gap: 8px; margin-top: 12px;';
+  
+  const logoutBtn = document.createElement('button');
+  logoutBtn.textContent = 'ログアウト';
+  logoutBtn.style.cssText = `
+    padding: 8px 16px;
+    background: #e74c3c;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 14px;
+  `;
+  
+  logoutBtn.onclick = async () => {
+    try {
+      await fetch('api.php?action=logout', { method: 'POST' });
+      window.location.reload();
+    } catch (err) {
+      console.error('Logout error:', err);
+      window.location.reload();
+    }
+  };
+  
+  const closeBtn = document.createElement('button');
+  closeBtn.textContent = '閉じる';
+  closeBtn.style.cssText = `
+    padding: 8px 16px;
+    background: #ddd;
+    color: #333;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 14px;
+  `;
+  
+  closeBtn.onclick = () => {
+    overlay.remove();
+  };
+  
+  buttons.appendChild(logoutBtn);
+  buttons.appendChild(closeBtn);
+  
+  dialog.appendChild(title);
+  dialog.appendChild(uidSection);
+  dialog.appendChild(passwordSection);
+  dialog.appendChild(buttons);
+  overlay.appendChild(dialog);
+  document.body.appendChild(overlay);
+  
+  overlay.addEventListener('click', (e) => {
+    if (e.target === overlay) {
+      overlay.remove();
+    }
+  });
+}
+
+// Wrap fetch to handle 401 responses
+const originalFetch = window.fetch;
+const FETCH_401_BYPASS_ACTIONS = new Set(['login', 'auth', 'set_password', 'check_auth']);
+
+function shouldBypass401Reload(requestInput) {
+  let urlString = null;
+  if (typeof requestInput === 'string') {
+    urlString = requestInput;
+  } else if (requestInput && typeof requestInput.url === 'string') {
+    urlString = requestInput.url;
+  }
+  
+  if (!urlString) return false;
+  
+  try {
+    const parsed = new URL(urlString, window.location.href);
+    if (!parsed.pathname.endsWith('/api.php') && !parsed.pathname.endsWith('api.php')) {
+      return false;
+    }
+    const action = parsed.searchParams.get('action');
+    return action ? FETCH_401_BYPASS_ACTIONS.has(action) : false;
+  } catch (err) {
+    console.warn('Failed to parse request URL for fetch wrapper:', err);
+    return false;
+  }
+}
+
+window.fetch = async function(...args) {
+  try {
+    const response = await originalFetch.apply(this, args);
+    
+    // Check for 401 Unauthorized - redirect to login for protected endpoints only
+    if (response.status === 401 && !shouldBypass401Reload(args[0])) {
+      window.location.reload();
+    }
+    
+    return response;
+  } catch (error) {
+    throw error;
+  }
+};
+
 let items = [];
 let undoStack = [];
 let redoStack = [];
@@ -858,7 +1574,7 @@ function commitFormattingChange(content, item, options = {}) {
 
 // Load from SQLite3 via API
 function loadItems(callback) {
-  fetch('api.php?action=list', {cache: 'no-store'})
+  fetch(addUIDToURL('api.php?action=list'), {cache: 'no-store'})
     .then(r => r.json())
     .then(data => {
       items = data.map(row => ({
@@ -902,7 +1618,7 @@ function createItem(type = 'text', text = '', afterId = null, callback, options 
   if (afterId) params.append('after_id', afterId);
   if (options.allowEmpty) params.append('allow_empty', '1');
 
-  fetch('api.php?action=add', {
+  fetch(addUIDToURL('api.php?action=add'), {
     method: 'POST',
     headers: {'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8'},
     body: params
@@ -951,7 +1667,7 @@ function updateItem(id, updates, callback, options = {}) {
       done: updates.checked ? '1' : '0'
     });
     
-    fetch('api.php?action=toggle', {
+    fetch(addUIDToURL('api.php?action=toggle'), {
       method: 'POST',
       headers: {'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8'},
       body: params
@@ -988,7 +1704,7 @@ function updateItem(id, updates, callback, options = {}) {
     params.append('collapsed', updates.collapsed ? '1' : '0');
   }
   
-  fetch('api.php?action=edit', {
+  fetch(addUIDToURL('api.php?action=edit'), {
     method: 'POST',
     headers: {'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8'},
     body: params
@@ -1032,7 +1748,7 @@ function deleteItem(id) {
     captureStateForUndo('delete', { id });
     
     const params = new URLSearchParams({id: id.toString()});
-    fetch('api.php?action=delete', {
+    fetch(addUIDToURL('api.php?action=delete'), {
       method: 'POST',
       headers: {'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8'},
       body: params
@@ -1062,7 +1778,7 @@ function reorderItems(callback) {
   
   const params = new URLSearchParams({order: JSON.stringify(order)});
   
-  fetch('api.php?action=reorder', {
+  fetch(addUIDToURL('api.php?action=reorder'), {
     method: 'POST',
     headers: {'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8'},
     body: params
@@ -1334,166 +2050,44 @@ function setDeadline(item, deadlineStr) {
 }
 
 // Prompt for deadline
+function formatDeadlineForDialog(value) {
+  if (!value) return '';
+  if (/^\d{8}$/.test(value)) {
+    return `${value.slice(0, 4)}-${value.slice(4, 6)}-${value.slice(6, 8)}`;
+  }
+  if (/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    return value;
+  }
+  return '';
+}
+
 function promptForDeadline(item) {
   if (!item) return;
-  
-  // Calculate default deadline: 7 days from now
-  const defaultDate = new Date();
-  defaultDate.setDate(defaultDate.getDate() + 7);
-  const defaultYear = defaultDate.getFullYear();
-  const defaultMonth = String(defaultDate.getMonth() + 1).padStart(2, '0');
-  const defaultDay = String(defaultDate.getDate()).padStart(2, '0');
-  const defaultDeadline = `${defaultYear}${defaultMonth}${defaultDay}`;
-  
-  // Convert existing deadline from YYYY-MM-DD to YYYYMMDD format if needed
-  let currentDeadlineFormatted = item.deadline;
-  if (currentDeadlineFormatted && currentDeadlineFormatted.includes('-')) {
-    currentDeadlineFormatted = currentDeadlineFormatted.replace(/-/g, '');
-  }
-  
-  // Create a date picker dialog using <input type="date">
-  const overlay = document.createElement('div');
-  overlay.className = 'preset-settings-overlay deadline-dialog-overlay';
-  overlay.setAttribute('role', 'dialog');
-  overlay.setAttribute('aria-modal', 'true');
-  overlay.style.position = 'fixed';
-  overlay.style.top = '0';
-  overlay.style.left = '0';
-  overlay.style.width = '100vw';
-  overlay.style.height = '100vh';
-  overlay.style.background = 'rgba(0,0,0,0.18)';
-  overlay.style.zIndex = '9999';
-
-  const dialog = document.createElement('div');
-  dialog.className = 'preset-settings-dialog deadline-dialog';
-  dialog.style.background = '#fff';
-  dialog.style.borderRadius = '12px';
-  dialog.style.boxShadow = '0 4px 24px rgba(0,0,0,0.22)';
-  dialog.style.padding = '10px 10px 8px 10px';
-  dialog.style.maxWidth = '260px';
-  dialog.style.margin = '40px auto';
-  dialog.style.position = 'relative';
-  dialog.style.display = 'flex';
-  dialog.style.flexDirection = 'column';
-  dialog.style.gap = '6px';
-
-  const header = document.createElement('div');
-  header.className = 'preset-settings-header deadline-dialog-header';
-  header.innerHTML = '<h2 style="margin:0;font-size:1em;font-weight:bold;">納期設定</h2>';
-  dialog.appendChild(header);
-
-  const input = document.createElement('input');
-  input.type = 'date';
-  input.className = 'deadline-dialog-date-input';
-  input.style.fontSize = '15px';
-  input.style.padding = '4px 8px';
-  input.style.width = '100%';
-  input.style.border = '1px solid #bbb';
-  input.style.borderRadius = '6px';
-  input.style.marginBottom = '0';
-  input.style.background = '#f8f8fa';
-  input.style.boxSizing = 'border-box';
-  // Set default value
-  let defaultValue = '';
-  if (item.deadline) {
-    if (/^\d{8}$/.test(currentDeadlineFormatted)) {
-      defaultValue = `${currentDeadlineFormatted.slice(0,4)}-${currentDeadlineFormatted.slice(4,6)}-${currentDeadlineFormatted.slice(6,8)}`;
-    } else if (/^\d{4}-\d{2}-\d{2}$/.test(currentDeadlineFormatted)) {
-      defaultValue = currentDeadlineFormatted;
-    }
-  } else {
-    defaultValue = `${defaultYear}-${defaultMonth}-${defaultDay}`;
-  }
-  input.value = defaultValue;
-  input.min = '2000-01-01';
-  input.max = '2099-12-31';
-  dialog.appendChild(input);
-
-  const error = document.createElement('div');
-  error.className = 'deadline-dialog-error';
-  error.style.color = '#d00';
-  error.style.fontSize = '13px';
-  error.style.margin = '6px 0 0 0';
-  dialog.appendChild(error);
-
-  const actions = document.createElement('div');
-  actions.className = 'preset-settings-actions deadline-dialog-actions';
-  actions.style.display = 'flex';
-  actions.style.justifyContent = 'space-between';
-  actions.style.gap = '6px';
-
-  // 左側: クリアボタン
-  const leftActions = document.createElement('div');
-  leftActions.style.display = 'flex';
-  leftActions.style.justifyContent = 'flex-start';
-  leftActions.style.gap = '6px';
-
-  const clearBtn = document.createElement('button');
-  clearBtn.textContent = 'クリア';
-  clearBtn.type = 'button';
-  clearBtn.className = 'preset-settings-btn deadline-dialog-btn-clear';
-  clearBtn.style.fontSize = '13px';
-  clearBtn.style.padding = '3px 10px';
-  clearBtn.style.borderRadius = '4px';
-  clearBtn.style.minWidth = 'auto';
-  clearBtn.onclick = () => {
-    setDeadline(item, null);
-    overlay.remove();
-  };
-  leftActions.appendChild(clearBtn);
-
-  // 右側: OKとキャンセル
-  const rightActions = document.createElement('div');
-  rightActions.style.display = 'flex';
-  rightActions.style.justifyContent = 'flex-end';
-  rightActions.style.gap = '6px';
-
-  const okBtn = document.createElement('button');
-  okBtn.textContent = 'OK';
-  okBtn.type = 'button';
-  okBtn.className = 'preset-settings-btn deadline-dialog-btn-ok';
-  okBtn.style.fontWeight = 'bold';
-  okBtn.style.fontSize = '13px';
-  okBtn.style.padding = '3px 10px';
-  okBtn.style.borderRadius = '4px';
-  okBtn.style.minWidth = 'auto';
-  okBtn.onclick = () => {
-    if (!input.value) {
-      setDeadline(item, null);
-      overlay.remove();
-      return;
-    }
-    // Validate date format YYYY-MM-DD
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(input.value)) {
-      error.textContent = '有効な日付を選択してください。';
-      return;
-    }
-    setDeadline(item, input.value);
-    overlay.remove();
-  };
-  rightActions.appendChild(okBtn);
-
-  const cancelBtn = document.createElement('button');
-  cancelBtn.textContent = 'キャンセル';
-  cancelBtn.type = 'button';
-  cancelBtn.className = 'preset-settings-btn deadline-dialog-btn-cancel';
-  cancelBtn.style.fontSize = '13px';
-  cancelBtn.style.padding = '3px 10px';
-  cancelBtn.style.borderRadius = '4px';
-  cancelBtn.style.minWidth = 'auto';
-  cancelBtn.onclick = () => {
-    overlay.remove();
-  };
-  rightActions.appendChild(cancelBtn);
-
-  actions.appendChild(leftActions);
-  actions.appendChild(rightActions);
-  dialog.appendChild(actions);
-  overlay.appendChild(dialog);
-  document.body.appendChild(overlay);
-
-  input.focus();
+  const currentValue = formatDeadlineForDialog(item.deadline);
+  openDeadlineDialog({
+    currentDeadline: currentValue,
+    onSubmit: (value, helpers) => {
+      if (value === null) {
+        setDeadline(item, null);
+        helpers.close();
+        return;
+      }
+      if (!value) {
+        setDeadline(item, null);
+        helpers.close();
+        return;
+      }
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+        helpers.setError('正しい日付を入力してください');
+        return false;
+      }
+      setDeadline(item, value);
+      helpers.close();
+    },
+    onCancel: () => {}
+  });
 }
+
 
 // Handle context menu for decoration presets and hyperlinks
 function handleContextMenu(e, content, item) {
@@ -2197,7 +2791,7 @@ async function openWebLink(url) {
   if (!url) return;
   try {
     const params = new URLSearchParams({ url });
-    const response = await fetch('api.php?action=open_link', {
+    const response = await fetch(addUIDToURL('api.php?action=open_link'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8' },
       body: params
@@ -2712,12 +3306,12 @@ function injectDeadlineDialogStyles() {
   cursor: pointer;
 }
 .deadline-dialog-clear {
-  background: #f2f2f2;
-  color: #333;
+  background: #e74c3c;
+  color: #fff;
   margin-right: auto;
 }
 .deadline-dialog-clear:hover {
-  background: #e5e5e5;
+  background: #d74233;
 }
 .deadline-dialog-cancel {
   background: #f2f2f2;
@@ -2749,7 +3343,7 @@ function ensureDeadlineDialog() {
     <div class="deadline-dialog" role="dialog" aria-modal="true" aria-label="納期の設定">
       <form class="deadline-dialog-form">
         <label class="deadline-dialog-label" for="deadline-dialog-input">納期</label>
-        <input id="deadline-dialog-input" class="deadline-dialog-input" type="text" placeholder="YYYYMMDD (例: 20251231)" />
+        <input id="deadline-dialog-input" class="deadline-dialog-input" type="date" inputmode="numeric" placeholder="YYYY-MM-DD" />
         <div class="deadline-dialog-error" aria-live="polite"></div>
         <div class="deadline-dialog-actions">
           <button type="button" class="deadline-dialog-clear">クリア</button>
@@ -2804,6 +3398,7 @@ function ensureDeadlineDialog() {
   });
   
   clearButton.addEventListener('click', () => {
+    input.value = '';
     if (deadlineDialogState && typeof deadlineDialogState.onSubmit === 'function') {
       const helpers = {
         setError: () => {},
@@ -3147,7 +3742,7 @@ function render() {
   
   // If no items exist, show single input row
   if (items.length === 0) {
-    addEmptyRow();
+    addEmptyRow({ autoFocus: true });
   }
   
   // Re-enable drag and drop if in reorder mode
@@ -3803,7 +4398,8 @@ function createDeleteButton(id) {
 }
 
 // Add empty row at the end
-function addEmptyRow() {
+function addEmptyRow(options = {}) {
+  const { autoFocus = false } = options;
   const li = document.createElement('li');
   li.className = 'empty-row';
   li.setAttribute('tabindex', '0');
@@ -3843,6 +4439,13 @@ function addEmptyRow() {
   
   li.appendChild(content);
   list.appendChild(li);
+  
+  if (autoFocus) {
+    setTimeout(() => {
+      content.focus();
+      selectCaretAtEnd(content);
+    }, 0);
+  }
 }
 
 // Select entire content of an element
@@ -3851,6 +4454,17 @@ function selectEntireContent(content) {
   const sel = window.getSelection();
   const range = document.createRange();
   range.selectNodeContents(content);
+  sel.removeAllRanges();
+  sel.addRange(range);
+}
+
+function selectCaretAtEnd(content) {
+  if (!content) return;
+  const sel = window.getSelection();
+  if (!sel) return;
+  const range = document.createRange();
+  range.selectNodeContents(content);
+  range.collapse(false);
   sel.removeAllRanges();
   sel.addRange(range);
 }
@@ -4117,14 +4731,36 @@ function handleDrop(e) {
 
 // Initialize
 window.addEventListener('load', () => {
-  loadPresets();
-  loadItems();
+  // Check if user is logged in
+  fetch('api.php?action=check_session')
+    .then(r => r.json())
+    .then(data => {
+      if (data.logged_in && data.uid) {
+        // User is already logged in
+        userID = data.uid;
+        isLoggedIn = true;
+        initializeApp();
+      } else {
+        // Show login screen
+        showLoginScreen();
+      }
+    })
+    .catch(() => {
+      // Error checking session, show login screen
+      showLoginScreen();
+    });
   
   // Setup reorder toggle button
   const toggleBtn = document.getElementById('reorderToggle');
   if (toggleBtn) {
     toggleBtn.setAttribute('aria-pressed', 'false');
     toggleBtn.addEventListener('click', toggleReorderMode);
+  }
+  
+  // Setup settings button
+  const settingsBtn = document.getElementById('settingsToggle');
+  if (settingsBtn) {
+    settingsBtn.addEventListener('click', showSettingsDialog);
   }
   
   // Setup global keyboard shortcuts for undo/redo (when not focused on editable elements)
@@ -4149,3 +4785,5 @@ window.addEventListener('load', () => {
     }
   });
 });
+
+

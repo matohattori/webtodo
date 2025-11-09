@@ -23,11 +23,93 @@ body {
   box-shadow: none;
 }
 
+:root {
+  --btn-radius: 5px;
+  --btn-font: 'Segoe UI', system-ui, -apple-system, sans-serif;
+}
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 7px 14px;
+  border-radius: var(--btn-radius);
+  border: 1px solid transparent;
+  background: #f1f5fb;
+  color: #1f2a44;
+  font-size: 13px;
+  font-weight: 600;
+  font-family: var(--btn-font);
+  line-height: 1.2;
+  cursor: pointer;
+  min-height: 34px;
+  transition: background-color 0.18s ease, border-color 0.18s ease, color 0.18s ease, box-shadow 0.18s ease;
+  text-decoration: none;
+  user-select: none;
+}
+
+.btn:disabled {
+  opacity: 0.65;
+  cursor: not-allowed;
+  box-shadow: none;
+}
+
+.btn:focus-visible {
+  outline: 2px solid rgba(74, 144, 226, 0.45);
+  outline-offset: 2px;
+}
+
+.btn-primary {
+  background: #4a90e2;
+  border-color: #4a90e2;
+  color: #fff;
+  box-shadow: 0 2px 6px rgba(74, 144, 226, 0.35);
+}
+
+.btn-primary:hover:not(:disabled) {
+  background: #3c7ed0;
+  border-color: #3c7ed0;
+}
+
+.btn-secondary {
+  background: #f7f9fc;
+  border-color: #d6dce7;
+  color: #1f2a44;
+}
+
+.btn-secondary:hover:not(:disabled) {
+  background: #eef2f9;
+}
+
+.btn-danger {
+  background: #e15b5b;
+  border-color: #d34747;
+  color: #fff;
+}
+
+.btn-danger:hover:not(:disabled) {
+  background: #c94848;
+}
+
+.btn-ghost {
+  background: transparent;
+  border-color: transparent;
+  color: #425579;
+}
+
+.btn-ghost:hover:not(:disabled) {
+  background: rgba(66, 85, 121, 0.1);
+}
+
+.btn-block {
+  width: 100%;
+}
+
 /* Floating reorder toggle */
-.reorder-toggle {
+.reorder-toggle,
+.settings-toggle {
   position: fixed;
-  bottom: 24px;
-  right: 24px;
   width: 26px;
   height: 26px;
   border-radius: 50%;
@@ -45,23 +127,37 @@ body {
   z-index: 100;
 }
 
-.reorder-toggle span {
+.reorder-toggle {
+  bottom: 58px;
+  right: 24px;
+}
+
+.settings-toggle {
+  bottom: 24px;
+  right: 24px;
+}
+
+.reorder-toggle span,
+.settings-toggle span {
   pointer-events: none;
   font-family: "Segoe Fluent Icons", "Segoe MDL2 Assets", sans-serif;
 }
 
-.reorder-toggle:hover {
+.reorder-toggle:hover,
+.settings-toggle:hover {
   color: #2f3c4d;
   border-color: rgba(47, 60, 77, 0.45);
 }
 
-.reorder-toggle.active {
+.reorder-toggle.active,
+.settings-toggle.active {
   background: rgba(74, 163, 255, 0.22);
   color: #2a7bd6;
   border-color: rgba(42, 123, 214, 0.45);
 }
 
-.reorder-toggle.active:hover {
+.reorder-toggle.active:hover,
+.settings-toggle.active:hover {
   background: rgba(42, 123, 214, 0.3);
   color: #1f5fa6;
   border-color: rgba(31, 95, 166, 0.55);
@@ -334,12 +430,20 @@ button.delete:hover {
     border-radius: 4px;
   }
   
-  .reorder-toggle {
-    bottom: 16px;
+  .reorder-toggle,
+  .settings-toggle {
     right: 16px;
     width: 22px;
     height: 22px;
     font-size: 12px;
+  }
+  
+  .reorder-toggle {
+    bottom: 44px;
+  }
+  
+  .settings-toggle {
+    bottom: 12px;
   }
   
   li {
@@ -461,7 +565,7 @@ body.reorder-mode input[type="checkbox"] {
 
 .context-submenu {
   position: absolute;
-  top: calc(100% + 4px);
+  top: 100%;
   left: 0;
   background: #fff;
   border: 1px solid #ddd;
