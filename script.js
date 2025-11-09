@@ -4,50 +4,200 @@
 // deadline: ISO date string or null
 // collapsed: boolean (only for collapsible-heading)
 
-// UID Management for per-user database separation
-let userUID = null;
-
-// Get or create UID for current user
-function getOrCreateUID() {
-  // Check if UID exists in cookie
-  const cookieUID = getCookie('webtodo_uid');
-  if (cookieUID) {
-    return cookieUID;
-  }
-  
-  // Generate new UID using crypto.randomUUID()
-  const newUID = crypto.randomUUID();
-  
-  // Store in cookie (expires in 10 years)
-  setCookie('webtodo_uid', newUID, 365 * 10);
-  
-  return newUID;
-}
-
-// Get cookie value
-function getCookie(name) {
-  const value = `; ${document.cookie}`;
-  const parts = value.split(`; ${name}=`);
-  if (parts.length === 2) return parts.pop().split(';').shift();
-  return null;
-}
-
-// Set cookie
-function setCookie(name, value, days) {
-  const date = new Date();
-  date.setTime(date.getTime() + (days * 24 * 60 * 60 * 1000));
-  const expires = `expires=${date.toUTCString()}`;
-  document.cookie = `${name}=${value};${expires};path=/;SameSite=Strict`;
-}
+// User ID Management for per-user database separation
+let userID = null;
+let isLoggedIn = false;
 
 // Add UID parameter to API URL
 function addUIDToURL(url) {
   const separator = url.includes('?') ? '&' : '?';
-  return `${url}${separator}uid=${encodeURIComponent(userUID)}`;
+  return `${url}${separator}uid=${encodeURIComponent(userID)}`;
 }
 
 // Authentication management
 let authDialogShown = false;
+
+// Show login screen
+function showLoginScreen() {
+  const overlay = document.createElement('div');
+  overlay.className = 'login-overlay';
+  overlay.style.cssText = `
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.5);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 10000;
+  `;
+  
+  const dialog = document.createElement('div');
+  dialog.className = 'login-dialog';
+  dialog.style.cssText = `
+    background: white;
+    padding: 32px;
+    border-radius: 8px;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
+    max-width: 400px;
+    width: 90%;
+  `;
+  
+  const title = document.createElement('h2');
+  title.textContent = 'Web ToDo ログイン';
+  title.style.cssText = 'margin: 0 0 24px 0; font-size: 20px; text-align: center;';
+  
+  const idLabel = document.createElement('label');
+  idLabel.textContent = 'ユーザーID:';
+  idLabel.style.cssText = 'display: block; font-size: 14px; margin-bottom: 4px; font-weight: 500;';
+  
+  const idInput = document.createElement('input');
+  idInput.type = 'text';
+  idInput.placeholder = 'ユーザーID（英数字、ハイフンのみ）';
+  idInput.style.cssText = `
+    width: 100%;
+    padding: 10px 12px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    font-size: 14px;
+    box-sizing: border-box;
+    margin-bottom: 16px;
+  `;
+  
+  const passwordLabel = document.createElement('label');
+  passwordLabel.textContent = 'パスワード:';
+  passwordLabel.style.cssText = 'display: block; font-size: 14px; margin-bottom: 4px; font-weight: 500;';
+  
+  const passwordInput = document.createElement('input');
+  passwordInput.type = 'password';
+  passwordInput.placeholder = 'パスワード';
+  passwordInput.style.cssText = `
+    width: 100%;
+    padding: 10px 12px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    font-size: 14px;
+    box-sizing: border-box;
+    margin-bottom: 16px;
+  `;
+  
+  const error = document.createElement('div');
+  error.style.cssText = 'color: #d00; font-size: 13px; margin-bottom: 16px; min-height: 20px;';
+  
+  const info = document.createElement('div');
+  info.textContent = '※初めてのIDの場合、パスワードを設定して新規登録します';
+  info.style.cssText = 'color: #666; font-size: 12px; margin-bottom: 16px;';
+  
+  const loginBtn = document.createElement('button');
+  loginBtn.textContent = 'ログイン / 新規登録';
+  loginBtn.style.cssText = `
+    width: 100%;
+    padding: 12px;
+    background: #4a90e2;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 15px;
+    font-weight: 500;
+  `;
+  
+  loginBtn.onclick = async () => {
+    const id = idInput.value.trim();
+    const password = passwordInput.value;
+    
+    if (!id) {
+      error.textContent = 'ユーザーIDを入力してください';
+      return;
+    }
+    
+    if (!/^[a-zA-Z0-9\-]+$/.test(id)) {
+      error.textContent = 'ユーザーIDは英数字とハイフンのみ使用できます';
+      return;
+    }
+    
+    if (!password) {
+      error.textContent = 'パスワードを入力してください';
+      return;
+    }
+    
+    try {
+      loginBtn.disabled = true;
+      loginBtn.textContent = '処理中...';
+      
+      // Try to login with the provided credentials
+      const loginResponse = await fetch(`api.php?action=login&uid=${encodeURIComponent(id)}`, {
+        method: 'POST',
+        headers: {'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8'},
+        body: new URLSearchParams({ password })
+      });
+      
+      const data = await loginResponse.json();
+      
+      if (loginResponse.ok && data.success) {
+        // Login successful
+        userID = id;
+        isLoggedIn = true;
+        overlay.remove();
+        initializeApp();
+      } else {
+        error.textContent = data.error || 'ログインに失敗しました';
+        loginBtn.disabled = false;
+        loginBtn.textContent = 'ログイン / 新規登録';
+      }
+    } catch (err) {
+      console.error('Login error:', err);
+      error.textContent = 'ログインエラーが発生しました';
+      loginBtn.disabled = false;
+      loginBtn.textContent = 'ログイン / 新規登録';
+    }
+  };
+  
+  const handleKeyDown = (e) => {
+    if (e.key === 'Enter') {
+      loginBtn.click();
+    }
+  };
+  
+  idInput.addEventListener('keydown', handleKeyDown);
+  passwordInput.addEventListener('keydown', handleKeyDown);
+  
+  dialog.appendChild(title);
+  dialog.appendChild(idLabel);
+  dialog.appendChild(idInput);
+  dialog.appendChild(passwordLabel);
+  dialog.appendChild(passwordInput);
+  dialog.appendChild(error);
+  dialog.appendChild(info);
+  dialog.appendChild(loginBtn);
+  overlay.appendChild(dialog);
+  document.body.appendChild(overlay);
+  
+  setTimeout(() => idInput.focus(), 100);
+}
+
+// Initialize the app after login
+function initializeApp() {
+  loadPresets();
+  loadItems();
+  
+  // Setup reorder toggle button if not already set up
+  const toggleBtn = document.getElementById('reorderToggle');
+  if (toggleBtn && !toggleBtn.hasAttribute('data-initialized')) {
+    toggleBtn.setAttribute('aria-pressed', 'false');
+    toggleBtn.addEventListener('click', toggleReorderMode);
+    toggleBtn.setAttribute('data-initialized', 'true');
+  }
+  
+  // Setup settings button if not already set up
+  const settingsBtn = document.getElementById('settingsToggle');
+  if (settingsBtn && !settingsBtn.hasAttribute('data-initialized')) {
+    settingsBtn.addEventListener('click', showSettingsDialog);
+    settingsBtn.setAttribute('data-initialized', 'true');
+  }
+}
 
 // Show password prompt dialog
 function showPasswordPrompt(callback) {
@@ -209,15 +359,15 @@ function showSettingsDialog() {
   uidSection.style.cssText = 'margin-bottom: 24px; padding: 12px; background: #f5f5f5; border-radius: 4px;';
   
   const uidLabel = document.createElement('div');
-  uidLabel.textContent = 'あなたのUID:';
+  uidLabel.textContent = 'ログイン中のユーザー:';
   uidLabel.style.cssText = 'font-size: 13px; color: #666; margin-bottom: 4px;';
   
   const uidValue = document.createElement('div');
-  uidValue.textContent = userUID;
-  uidValue.style.cssText = 'font-family: monospace; font-size: 12px; color: #333; word-break: break-all;';
+  uidValue.textContent = userID;
+  uidValue.style.cssText = 'font-family: monospace; font-size: 14px; color: #333; word-break: break-all; font-weight: 500;';
   
   const uidNote = document.createElement('div');
-  uidNote.textContent = '※このUIDで個別のデータベースが管理されています';
+  uidNote.textContent = '※このIDで個別のデータベースが管理されています';
   uidNote.style.cssText = 'font-size: 11px; color: #999; margin-top: 4px;';
   
   uidSection.appendChild(uidLabel);
@@ -334,7 +484,29 @@ function showSettingsDialog() {
   passwordSection.appendChild(setPasswordBtn);
   
   const buttons = document.createElement('div');
-  buttons.style.cssText = 'display: flex; justify-content: flex-end; gap: 8px;';
+  buttons.style.cssText = 'display: flex; justify-content: space-between; gap: 8px; margin-top: 24px;';
+  
+  const logoutBtn = document.createElement('button');
+  logoutBtn.textContent = 'ログアウト';
+  logoutBtn.style.cssText = `
+    padding: 8px 16px;
+    background: #e74c3c;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 14px;
+  `;
+  
+  logoutBtn.onclick = async () => {
+    try {
+      await fetch('api.php?action=logout', { method: 'POST' });
+      window.location.reload();
+    } catch (err) {
+      console.error('Logout error:', err);
+      window.location.reload();
+    }
+  };
   
   const closeBtn = document.createElement('button');
   closeBtn.textContent = '閉じる';
@@ -352,6 +524,7 @@ function showSettingsDialog() {
     overlay.remove();
   };
   
+  buttons.appendChild(logoutBtn);
   buttons.appendChild(closeBtn);
   
   dialog.appendChild(title);
@@ -374,23 +547,11 @@ window.fetch = async function(...args) {
   try {
     const response = await originalFetch.apply(this, args);
     
-    // Check for 401 Unauthorized
+    // Check for 401 Unauthorized - redirect to login
     if (response.status === 401) {
-      const clonedResponse = response.clone();
-      try {
-        const data = await clonedResponse.json();
-        if (data.auth_required) {
-          // Show password prompt and retry
-          return new Promise((resolve) => {
-            handleAuthError(() => {
-              // Retry the original request
-              originalFetch.apply(this, args).then(resolve);
-            });
-          });
-        }
-      } catch (e) {
-        // Not JSON, continue with original response
-      }
+      // Session expired, redirect to login
+      window.location.reload();
+      return response;
     }
     
     return response;
@@ -4512,11 +4673,24 @@ function handleDrop(e) {
 
 // Initialize
 window.addEventListener('load', () => {
-  // Initialize UID first
-  userUID = getOrCreateUID();
-  
-  loadPresets();
-  loadItems();
+  // Check if user is logged in
+  fetch('api.php?action=check_session')
+    .then(r => r.json())
+    .then(data => {
+      if (data.logged_in && data.uid) {
+        // User is already logged in
+        userID = data.uid;
+        isLoggedIn = true;
+        initializeApp();
+      } else {
+        // Show login screen
+        showLoginScreen();
+      }
+    })
+    .catch(() => {
+      // Error checking session, show login screen
+      showLoginScreen();
+    });
   
   // Setup reorder toggle button
   const toggleBtn = document.getElementById('reorderToggle');

@@ -158,6 +158,66 @@ function open_url_with_os(string $url): bool {
 }
 
 switch ($action) {
+  case 'check_session':
+    // Check if user is logged in
+    header('Content-Type: application/json; charset=utf-8');
+    if (isset($_SESSION['user_id'])) {
+      echo json_encode([
+        'logged_in' => true,
+        'uid' => $_SESSION['user_id']
+      ]);
+    } else {
+      echo json_encode(['logged_in' => false]);
+    }
+    break;
+  
+  case 'login':
+    // Login or register user
+    $password = $_POST['password'] ?? '';
+    
+    if (empty($password)) {
+      http_response_code(400);
+      header('Content-Type: application/json; charset=utf-8');
+      echo json_encode(['error' => 'パスワードを入力してください']);
+      break;
+    }
+    
+    // Check if this is a new user (no password set) or existing user
+    if (hasPassword($db, $uid)) {
+      // Existing user - verify password
+      if (verifyPassword($db, $uid, $password)) {
+        $_SESSION['user_id'] = $uid;
+        $_SESSION['auth_' . $uid] = true;
+        header('Content-Type: application/json; charset=utf-8');
+        echo json_encode(['success' => true, 'message' => 'ログイン成功']);
+      } else {
+        http_response_code(401);
+        header('Content-Type: application/json; charset=utf-8');
+        echo json_encode(['error' => 'パスワードが正しくありません']);
+      }
+    } else {
+      // New user - register with this password
+      $passHash = password_hash($password, PASSWORD_DEFAULT);
+      $stmt = $db->prepare('INSERT INTO user_meta (uid, pass_hash) VALUES (:uid, :pass_hash)');
+      $stmt->bindValue(':uid', $uid, SQLITE3_TEXT);
+      $stmt->bindValue(':pass_hash', $passHash, SQLITE3_TEXT);
+      $stmt->execute();
+      
+      $_SESSION['user_id'] = $uid;
+      $_SESSION['auth_' . $uid] = true;
+      header('Content-Type: application/json; charset=utf-8');
+      echo json_encode(['success' => true, 'message' => '新規登録が完了しました']);
+    }
+    break;
+  
+  case 'logout':
+    // Logout user
+    session_unset();
+    session_destroy();
+    header('Content-Type: application/json; charset=utf-8');
+    echo json_encode(['success' => true]);
+    break;
+  
   case 'auth':
     // Authenticate user with password
     $password = $_POST['password'] ?? '';
