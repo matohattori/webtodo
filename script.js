@@ -23,14 +23,12 @@ function showLoginScreen() {
   overlay.className = 'login-overlay';
   overlay.style.cssText = `
     position: fixed;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    background: rgba(0, 0, 0, 0.5);
+    inset: 0;
+    background: rgba(0, 0, 0, 0.35);
     display: flex;
     align-items: center;
     justify-content: center;
+    padding: 16px;
     z-index: 10000;
   `;
   
@@ -91,7 +89,8 @@ function showLoginScreen() {
   info.style.cssText = 'color: #666; font-size: 12px; margin-bottom: 16px;';
   
   const loginBtn = document.createElement('button');
-  loginBtn.textContent = 'ログイン / 新規登録';
+  const loginButtonDefaultText = 'ログイン / 新規登録';
+  loginBtn.textContent = loginButtonDefaultText;
   loginBtn.style.cssText = `
     width: 100%;
     padding: 12px;
@@ -103,6 +102,109 @@ function showLoginScreen() {
     font-size: 15px;
     font-weight: 500;
   `;
+  
+  const showRegistrationConfirmDialog = (userId) => {
+    return new Promise((resolve) => {
+      const confirmOverlay = document.createElement('div');
+      confirmOverlay.className = 'login-confirm-overlay';
+      confirmOverlay.style.cssText = `
+        position: fixed;
+        inset: 0;
+        background: rgba(0, 0, 0, 0.5);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 10001;
+      `;
+      
+      const confirmDialog = document.createElement('div');
+      confirmDialog.className = 'login-confirm-dialog';
+      confirmDialog.style.cssText = `
+        background: #fff;
+        padding: 24px;
+        border-radius: 8px;
+        width: min(360px, calc(100% - 48px));
+        box-shadow: 0 6px 24px rgba(0, 0, 0, 0.18);
+        box-sizing: border-box;
+        text-align: left;
+      `;
+      
+      const heading = document.createElement('h3');
+      heading.textContent = '新規登録の確認';
+      heading.style.cssText = 'margin: 0 0 12px; font-size: 18px; color: #1e3a5f;';
+      confirmDialog.appendChild(heading);
+      
+      const message = document.createElement('p');
+      message.textContent = `ユーザーID「${userId}」は未登録です。新規登録を実行してよろしいですか？`;
+      message.style.cssText = 'margin: 0 0 16px; font-size: 14px; color: #333; line-height: 1.6;';
+      confirmDialog.appendChild(message);
+      
+      const caution = document.createElement('p');
+      caution.textContent = '登録後はこのパスワードでログインできるようになります。';
+      caution.style.cssText = 'margin: 0 0 20px; font-size: 12px; color: #666;';
+      confirmDialog.appendChild(caution);
+      
+      const btnRow = document.createElement('div');
+      btnRow.style.cssText = 'display: flex; justify-content: flex-end; gap: 8px;';
+      
+      const cancelBtn = document.createElement('button');
+      cancelBtn.textContent = 'キャンセル';
+      cancelBtn.style.cssText = `
+        padding: 8px 14px;
+        border: 1px solid #ccc;
+        border-radius: 4px;
+        background: #fff;
+        color: #555;
+        cursor: pointer;
+        font-size: 13px;
+      `;
+      
+      const confirmBtn = document.createElement('button');
+      confirmBtn.textContent = '新規登録する';
+      confirmBtn.style.cssText = `
+        padding: 8px 16px;
+        border: none;
+        border-radius: 4px;
+        background: #4a90e2;
+        color: #fff;
+        cursor: pointer;
+        font-size: 13px;
+        font-weight: 600;
+      `;
+      
+      const cleanup = (result) => {
+        document.removeEventListener('keydown', handleKeyDown);
+        confirmOverlay.remove();
+        resolve(result);
+      };
+      
+      const handleKeyDown = (evt) => {
+        if (evt.key === 'Escape') {
+          evt.preventDefault();
+          cleanup(false);
+        } else if (evt.key === 'Enter') {
+          evt.preventDefault();
+          cleanup(true);
+        }
+      };
+      
+      cancelBtn.addEventListener('click', () => cleanup(false));
+      confirmBtn.addEventListener('click', () => cleanup(true));
+      confirmOverlay.addEventListener('click', (evt) => {
+        if (evt.target === confirmOverlay) {
+          cleanup(false);
+        }
+      });
+      
+      btnRow.appendChild(cancelBtn);
+      btnRow.appendChild(confirmBtn);
+      confirmDialog.appendChild(btnRow);
+      confirmOverlay.appendChild(confirmDialog);
+      document.body.appendChild(confirmOverlay);
+      document.addEventListener('keydown', handleKeyDown);
+      confirmBtn.focus();
+    });
+  };
   
   loginBtn.onclick = async () => {
     const id = idInput.value.trim();
@@ -125,6 +227,26 @@ function showLoginScreen() {
     
     try {
       loginBtn.disabled = true;
+      loginBtn.textContent = '確認中...';
+      
+      let isNewRegistration = false;
+      try {
+        const status = await fetchUserAuthStatus(id);
+        isNewRegistration = status ? status.hasPassword === false : false;
+      } catch (statusError) {
+        console.warn('Failed to check registration state:', statusError);
+      }
+      
+      if (isNewRegistration) {
+        const confirmed = await showRegistrationConfirmDialog(id);
+        if (!confirmed) {
+          error.textContent = '新規登録をキャンセルしました';
+          loginBtn.disabled = false;
+          loginBtn.textContent = loginButtonDefaultText;
+          return;
+        }
+      }
+      
       loginBtn.textContent = '処理中...';
       
       // Try to login with the provided credentials
@@ -143,15 +265,21 @@ function showLoginScreen() {
         overlay.remove();
         initializeApp();
       } else {
-        error.textContent = data.error || 'ログインに失敗しました';
+        if (loginResponse.status === 401) {
+          error.textContent = 'パスワードが違います。再度入力してください。';
+          passwordInput.value = '';
+          passwordInput.focus();
+        } else {
+          error.textContent = (data && data.error) ? data.error : 'ログインに失敗しました';
+        }
         loginBtn.disabled = false;
-        loginBtn.textContent = 'ログイン / 新規登録';
+        loginBtn.textContent = loginButtonDefaultText;
       }
     } catch (err) {
       console.error('Login error:', err);
-      error.textContent = 'ログインエラーが発生しました';
+      error.textContent = 'ログインでエラーが発生しました';
       loginBtn.disabled = false;
-      loginBtn.textContent = 'ログイン / 新規登録';
+      loginBtn.textContent = loginButtonDefaultText;
     }
   };
   
@@ -176,6 +304,20 @@ function showLoginScreen() {
   document.body.appendChild(overlay);
   
   setTimeout(() => idInput.focus(), 100);
+}
+
+// Fetch whether the provided UID already has a password set
+async function fetchUserAuthStatus(uid) {
+  const response = await fetch(`api.php?action=check_auth&uid=${encodeURIComponent(uid)}`);
+  if (!response.ok) {
+    throw new Error(`Failed to fetch auth status: ${response.status}`);
+  }
+  const data = await response.json();
+  if (!data) return null;
+  return {
+    hasPassword: !!data.has_password,
+    isAuthenticated: !!data.is_authenticated
+  };
 }
 
 // Initialize the app after login
@@ -232,7 +374,7 @@ function showPasswordPrompt(callback) {
   
   const title = document.createElement('h2');
   title.textContent = 'パスワード認証';
-  title.style.cssText = 'margin: 0 0 16px 0; font-size: 18px;';
+  title.style.cssText = 'margin: 0 0 12px; font-size: 16px; text-align: center; color: #1e3a5f;';
   
   const message = document.createElement('p');
   message.textContent = 'このデータベースにはパスワードが設定されています。パスワードを入力してください。';
@@ -343,47 +485,42 @@ function showSettingsDialog() {
   const dialog = document.createElement('div');
   dialog.className = 'settings-dialog';
   dialog.style.cssText = `
-    background: white;
-    padding: 24px;
-    border-radius: 8px;
-    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
-    max-width: 500px;
-    width: 90%;
+    background: #fff;
+    padding: 18px;
+    border-radius: 10px;
+    box-shadow: 0 12px 32px rgba(0, 0, 0, 0.18);
+    width: min(360px, 100%);
+    box-sizing: border-box;
   `;
   
-  const title = document.createElement('h2');
-  title.textContent = '設定';
-  title.style.cssText = 'margin: 0 0 16px 0; font-size: 18px;';
+const title = document.createElement('h2');
+title.textContent = '設定';
+title.style.cssText = 'margin: 0 0 12px; font-size: 16px; text-align: center;';
   
   const uidSection = document.createElement('div');
-  uidSection.style.cssText = 'margin-bottom: 24px; padding: 12px; background: #f5f5f5; border-radius: 4px;';
+  uidSection.style.cssText = 'margin-bottom: 14px; padding: 10px 12px; background: #f4f7fb; border-radius: 6px;';
   
   const uidLabel = document.createElement('div');
-  uidLabel.textContent = 'ログイン中のユーザー:';
-  uidLabel.style.cssText = 'font-size: 13px; color: #666; margin-bottom: 4px;';
+  uidLabel.textContent = 'ログイン中のユーザーID';
+  uidLabel.style.cssText = 'font-size: 12px; color: #556378; margin-bottom: 4px;';
   
   const uidValue = document.createElement('div');
   uidValue.textContent = userID;
-  uidValue.style.cssText = 'font-family: monospace; font-size: 14px; color: #333; word-break: break-all; font-weight: 500;';
-  
-  const uidNote = document.createElement('div');
-  uidNote.textContent = '※このIDで個別のデータベースが管理されています';
-  uidNote.style.cssText = 'font-size: 11px; color: #999; margin-top: 4px;';
-  
+  uidValue.style.cssText = 'font-family: "SFMono-Regular", Consolas, monospace; font-size: 13px; color: #1e3a5f; word-break: break-all;';
   uidSection.appendChild(uidLabel);
   uidSection.appendChild(uidValue);
-  uidSection.appendChild(uidNote);
+  
   
   const passwordSection = document.createElement('div');
-  passwordSection.style.cssText = 'margin-bottom: 16px;';
+  passwordSection.style.cssText = 'margin-bottom: 10px;';
   
   const passwordTitle = document.createElement('h3');
   passwordTitle.textContent = 'パスワード設定';
-  passwordTitle.style.cssText = 'margin: 0 0 12px 0; font-size: 15px;';
+  passwordTitle.style.cssText = 'margin: 0 0 10px; font-size: 14px; color: #1e3a5f;';
   
   const currentPasswordLabel = document.createElement('label');
-  currentPasswordLabel.textContent = '現在のパスワード (変更時のみ):';
-  currentPasswordLabel.style.cssText = 'display: block; font-size: 13px; margin-bottom: 4px;';
+  currentPasswordLabel.textContent = '現在のパスワード (変更時のみ)';
+  currentPasswordLabel.style.cssText = 'display: block; font-size: 12px; margin-bottom: 4px; color: #4d5a6f;';
   
   const currentPasswordInput = document.createElement('input');
   currentPasswordInput.type = 'password';
@@ -399,8 +536,8 @@ function showSettingsDialog() {
   `;
   
   const newPasswordLabel = document.createElement('label');
-  newPasswordLabel.textContent = '新しいパスワード:';
-  newPasswordLabel.style.cssText = 'display: block; font-size: 13px; margin-bottom: 4px;';
+  newPasswordLabel.textContent = '新しいパスワード';
+  newPasswordLabel.style.cssText = 'display: block; font-size: 12px; margin-bottom: 4px; color: #4d5a6f;';
   
   const newPasswordInput = document.createElement('input');
   newPasswordInput.type = 'password';
@@ -416,10 +553,10 @@ function showSettingsDialog() {
   `;
   
   const error = document.createElement('div');
-  error.style.cssText = 'color: #d00; font-size: 13px; margin-bottom: 12px; min-height: 20px;';
+  error.style.cssText = 'color: #d53f3f; font-size: 12px; margin-bottom: 8px; min-height: 18px;';
   
   const success = document.createElement('div');
-  success.style.cssText = 'color: #0a0; font-size: 13px; margin-bottom: 12px; min-height: 20px;';
+  success.style.cssText = 'color: #249944; font-size: 12px; margin-bottom: 8px; min-height: 18px;';
   
   const setPasswordBtn = document.createElement('button');
   setPasswordBtn.textContent = 'パスワードを設定';
@@ -484,7 +621,7 @@ function showSettingsDialog() {
   passwordSection.appendChild(setPasswordBtn);
   
   const buttons = document.createElement('div');
-  buttons.style.cssText = 'display: flex; justify-content: space-between; gap: 8px; margin-top: 24px;';
+  buttons.style.cssText = 'display: flex; justify-content: space-between; gap: 8px; margin-top: 12px;';
   
   const logoutBtn = document.createElement('button');
   logoutBtn.textContent = 'ログアウト';
@@ -543,15 +680,38 @@ function showSettingsDialog() {
 
 // Wrap fetch to handle 401 responses
 const originalFetch = window.fetch;
+const FETCH_401_BYPASS_ACTIONS = new Set(['login', 'auth', 'set_password', 'check_auth']);
+
+function shouldBypass401Reload(requestInput) {
+  let urlString = null;
+  if (typeof requestInput === 'string') {
+    urlString = requestInput;
+  } else if (requestInput && typeof requestInput.url === 'string') {
+    urlString = requestInput.url;
+  }
+  
+  if (!urlString) return false;
+  
+  try {
+    const parsed = new URL(urlString, window.location.href);
+    if (!parsed.pathname.endsWith('/api.php') && !parsed.pathname.endsWith('api.php')) {
+      return false;
+    }
+    const action = parsed.searchParams.get('action');
+    return action ? FETCH_401_BYPASS_ACTIONS.has(action) : false;
+  } catch (err) {
+    console.warn('Failed to parse request URL for fetch wrapper:', err);
+    return false;
+  }
+}
+
 window.fetch = async function(...args) {
   try {
     const response = await originalFetch.apply(this, args);
     
-    // Check for 401 Unauthorized - redirect to login
-    if (response.status === 401) {
-      // Session expired, redirect to login
+    // Check for 401 Unauthorized - redirect to login for protected endpoints only
+    if (response.status === 401 && !shouldBypass401Reload(args[0])) {
       window.location.reload();
-      return response;
     }
     
     return response;
@@ -1890,166 +2050,44 @@ function setDeadline(item, deadlineStr) {
 }
 
 // Prompt for deadline
+function formatDeadlineForDialog(value) {
+  if (!value) return '';
+  if (/^\d{8}$/.test(value)) {
+    return `${value.slice(0, 4)}-${value.slice(4, 6)}-${value.slice(6, 8)}`;
+  }
+  if (/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    return value;
+  }
+  return '';
+}
+
 function promptForDeadline(item) {
   if (!item) return;
-  
-  // Calculate default deadline: 7 days from now
-  const defaultDate = new Date();
-  defaultDate.setDate(defaultDate.getDate() + 7);
-  const defaultYear = defaultDate.getFullYear();
-  const defaultMonth = String(defaultDate.getMonth() + 1).padStart(2, '0');
-  const defaultDay = String(defaultDate.getDate()).padStart(2, '0');
-  const defaultDeadline = `${defaultYear}${defaultMonth}${defaultDay}`;
-  
-  // Convert existing deadline from YYYY-MM-DD to YYYYMMDD format if needed
-  let currentDeadlineFormatted = item.deadline;
-  if (currentDeadlineFormatted && currentDeadlineFormatted.includes('-')) {
-    currentDeadlineFormatted = currentDeadlineFormatted.replace(/-/g, '');
-  }
-  
-  // Create a date picker dialog using <input type="date">
-  const overlay = document.createElement('div');
-  overlay.className = 'preset-settings-overlay deadline-dialog-overlay';
-  overlay.setAttribute('role', 'dialog');
-  overlay.setAttribute('aria-modal', 'true');
-  overlay.style.position = 'fixed';
-  overlay.style.top = '0';
-  overlay.style.left = '0';
-  overlay.style.width = '100vw';
-  overlay.style.height = '100vh';
-  overlay.style.background = 'rgba(0,0,0,0.18)';
-  overlay.style.zIndex = '9999';
-
-  const dialog = document.createElement('div');
-  dialog.className = 'preset-settings-dialog deadline-dialog';
-  dialog.style.background = '#fff';
-  dialog.style.borderRadius = '12px';
-  dialog.style.boxShadow = '0 4px 24px rgba(0,0,0,0.22)';
-  dialog.style.padding = '10px 10px 8px 10px';
-  dialog.style.maxWidth = '260px';
-  dialog.style.margin = '40px auto';
-  dialog.style.position = 'relative';
-  dialog.style.display = 'flex';
-  dialog.style.flexDirection = 'column';
-  dialog.style.gap = '6px';
-
-  const header = document.createElement('div');
-  header.className = 'preset-settings-header deadline-dialog-header';
-  header.innerHTML = '<h2 style="margin:0;font-size:1em;font-weight:bold;">納期設定</h2>';
-  dialog.appendChild(header);
-
-  const input = document.createElement('input');
-  input.type = 'date';
-  input.className = 'deadline-dialog-date-input';
-  input.style.fontSize = '15px';
-  input.style.padding = '4px 8px';
-  input.style.width = '100%';
-  input.style.border = '1px solid #bbb';
-  input.style.borderRadius = '6px';
-  input.style.marginBottom = '0';
-  input.style.background = '#f8f8fa';
-  input.style.boxSizing = 'border-box';
-  // Set default value
-  let defaultValue = '';
-  if (item.deadline) {
-    if (/^\d{8}$/.test(currentDeadlineFormatted)) {
-      defaultValue = `${currentDeadlineFormatted.slice(0,4)}-${currentDeadlineFormatted.slice(4,6)}-${currentDeadlineFormatted.slice(6,8)}`;
-    } else if (/^\d{4}-\d{2}-\d{2}$/.test(currentDeadlineFormatted)) {
-      defaultValue = currentDeadlineFormatted;
-    }
-  } else {
-    defaultValue = `${defaultYear}-${defaultMonth}-${defaultDay}`;
-  }
-  input.value = defaultValue;
-  input.min = '2000-01-01';
-  input.max = '2099-12-31';
-  dialog.appendChild(input);
-
-  const error = document.createElement('div');
-  error.className = 'deadline-dialog-error';
-  error.style.color = '#d00';
-  error.style.fontSize = '13px';
-  error.style.margin = '6px 0 0 0';
-  dialog.appendChild(error);
-
-  const actions = document.createElement('div');
-  actions.className = 'preset-settings-actions deadline-dialog-actions';
-  actions.style.display = 'flex';
-  actions.style.justifyContent = 'space-between';
-  actions.style.gap = '6px';
-
-  // 左側: クリアボタン
-  const leftActions = document.createElement('div');
-  leftActions.style.display = 'flex';
-  leftActions.style.justifyContent = 'flex-start';
-  leftActions.style.gap = '6px';
-
-  const clearBtn = document.createElement('button');
-  clearBtn.textContent = 'クリア';
-  clearBtn.type = 'button';
-  clearBtn.className = 'preset-settings-btn deadline-dialog-btn-clear';
-  clearBtn.style.fontSize = '13px';
-  clearBtn.style.padding = '3px 10px';
-  clearBtn.style.borderRadius = '4px';
-  clearBtn.style.minWidth = 'auto';
-  clearBtn.onclick = () => {
-    setDeadline(item, null);
-    overlay.remove();
-  };
-  leftActions.appendChild(clearBtn);
-
-  // 右側: OKとキャンセル
-  const rightActions = document.createElement('div');
-  rightActions.style.display = 'flex';
-  rightActions.style.justifyContent = 'flex-end';
-  rightActions.style.gap = '6px';
-
-  const okBtn = document.createElement('button');
-  okBtn.textContent = 'OK';
-  okBtn.type = 'button';
-  okBtn.className = 'preset-settings-btn deadline-dialog-btn-ok';
-  okBtn.style.fontWeight = 'bold';
-  okBtn.style.fontSize = '13px';
-  okBtn.style.padding = '3px 10px';
-  okBtn.style.borderRadius = '4px';
-  okBtn.style.minWidth = 'auto';
-  okBtn.onclick = () => {
-    if (!input.value) {
-      setDeadline(item, null);
-      overlay.remove();
-      return;
-    }
-    // Validate date format YYYY-MM-DD
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(input.value)) {
-      error.textContent = '有効な日付を選択してください。';
-      return;
-    }
-    setDeadline(item, input.value);
-    overlay.remove();
-  };
-  rightActions.appendChild(okBtn);
-
-  const cancelBtn = document.createElement('button');
-  cancelBtn.textContent = 'キャンセル';
-  cancelBtn.type = 'button';
-  cancelBtn.className = 'preset-settings-btn deadline-dialog-btn-cancel';
-  cancelBtn.style.fontSize = '13px';
-  cancelBtn.style.padding = '3px 10px';
-  cancelBtn.style.borderRadius = '4px';
-  cancelBtn.style.minWidth = 'auto';
-  cancelBtn.onclick = () => {
-    overlay.remove();
-  };
-  rightActions.appendChild(cancelBtn);
-
-  actions.appendChild(leftActions);
-  actions.appendChild(rightActions);
-  dialog.appendChild(actions);
-  overlay.appendChild(dialog);
-  document.body.appendChild(overlay);
-
-  input.focus();
+  const currentValue = formatDeadlineForDialog(item.deadline);
+  openDeadlineDialog({
+    currentDeadline: currentValue,
+    onSubmit: (value, helpers) => {
+      if (value === null) {
+        setDeadline(item, null);
+        helpers.close();
+        return;
+      }
+      if (!value) {
+        setDeadline(item, null);
+        helpers.close();
+        return;
+      }
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+        helpers.setError('正しい日付を入力してください');
+        return false;
+      }
+      setDeadline(item, value);
+      helpers.close();
+    },
+    onCancel: () => {}
+  });
 }
+
 
 // Handle context menu for decoration presets and hyperlinks
 function handleContextMenu(e, content, item) {
@@ -3268,12 +3306,12 @@ function injectDeadlineDialogStyles() {
   cursor: pointer;
 }
 .deadline-dialog-clear {
-  background: #f2f2f2;
-  color: #333;
+  background: #e74c3c;
+  color: #fff;
   margin-right: auto;
 }
 .deadline-dialog-clear:hover {
-  background: #e5e5e5;
+  background: #d74233;
 }
 .deadline-dialog-cancel {
   background: #f2f2f2;
@@ -3305,7 +3343,7 @@ function ensureDeadlineDialog() {
     <div class="deadline-dialog" role="dialog" aria-modal="true" aria-label="納期の設定">
       <form class="deadline-dialog-form">
         <label class="deadline-dialog-label" for="deadline-dialog-input">納期</label>
-        <input id="deadline-dialog-input" class="deadline-dialog-input" type="text" placeholder="YYYYMMDD (例: 20251231)" />
+        <input id="deadline-dialog-input" class="deadline-dialog-input" type="date" inputmode="numeric" placeholder="YYYY-MM-DD" />
         <div class="deadline-dialog-error" aria-live="polite"></div>
         <div class="deadline-dialog-actions">
           <button type="button" class="deadline-dialog-clear">クリア</button>
@@ -3360,6 +3398,7 @@ function ensureDeadlineDialog() {
   });
   
   clearButton.addEventListener('click', () => {
+    input.value = '';
     if (deadlineDialogState && typeof deadlineDialogState.onSubmit === 'function') {
       const helpers = {
         setError: () => {},
@@ -3703,7 +3742,7 @@ function render() {
   
   // If no items exist, show single input row
   if (items.length === 0) {
-    addEmptyRow();
+    addEmptyRow({ autoFocus: true });
   }
   
   // Re-enable drag and drop if in reorder mode
@@ -4359,7 +4398,8 @@ function createDeleteButton(id) {
 }
 
 // Add empty row at the end
-function addEmptyRow() {
+function addEmptyRow(options = {}) {
+  const { autoFocus = false } = options;
   const li = document.createElement('li');
   li.className = 'empty-row';
   li.setAttribute('tabindex', '0');
@@ -4399,6 +4439,13 @@ function addEmptyRow() {
   
   li.appendChild(content);
   list.appendChild(li);
+  
+  if (autoFocus) {
+    setTimeout(() => {
+      content.focus();
+      selectCaretAtEnd(content);
+    }, 0);
+  }
 }
 
 // Select entire content of an element
@@ -4407,6 +4454,17 @@ function selectEntireContent(content) {
   const sel = window.getSelection();
   const range = document.createRange();
   range.selectNodeContents(content);
+  sel.removeAllRanges();
+  sel.addRange(range);
+}
+
+function selectCaretAtEnd(content) {
+  if (!content) return;
+  const sel = window.getSelection();
+  if (!sel) return;
+  const range = document.createRange();
+  range.selectNodeContents(content);
+  range.collapse(false);
   sel.removeAllRanges();
   sel.addRange(range);
 }
@@ -4727,3 +4785,5 @@ window.addEventListener('load', () => {
     }
   });
 });
+
+

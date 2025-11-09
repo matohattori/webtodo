@@ -257,7 +257,7 @@ switch ($action) {
       if (empty($currentPassword) || !verifyPassword($db, $uid, $currentPassword)) {
         http_response_code(401);
         header('Content-Type: application/json; charset=utf-8');
-        echo json_encode(['error' => 'Current password is incorrect']);
+        echo json_encode(['error' => '現在のパスワードが違います']);
         break;
       }
     }
