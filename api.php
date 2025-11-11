@@ -300,6 +300,7 @@ switch ($action) {
     $type = (string)($_POST['type'] ?? 'text');
     $after_id = isset($_POST['after_id']) ? (int)$_POST['after_id'] : null;
     $allow_empty = isset($_POST['allow_empty']) && $_POST['allow_empty'] === '1';
+    $deadline = isset($_POST['deadline']) ? $_POST['deadline'] : null;
     
     // Allow empty text for hr, checkbox, and list types
     if ($text !== '' || $allow_empty || in_array($type, ['hr', 'checkbox', 'list'])) {
@@ -319,10 +320,11 @@ switch ($action) {
         $newOrder = ($maxOrder === null) ? 0 : $maxOrder + 1;
       }
       
-      $stmt = $db->prepare('INSERT INTO todos (text, done, type, sort_order, parent_id) VALUES (:text, 0, :type, :sort_order, NULL)');
+      $stmt = $db->prepare('INSERT INTO todos (text, done, type, sort_order, parent_id, deadline) VALUES (:text, 0, :type, :sort_order, NULL, :deadline)');
       $stmt->bindValue(':text', $text, SQLITE3_TEXT);
       $stmt->bindValue(':type', $type, SQLITE3_TEXT);
       $stmt->bindValue(':sort_order', $newOrder, SQLITE3_INTEGER);
+      $stmt->bindValue(':deadline', $deadline, SQLITE3_TEXT);
       $stmt->execute();
 
       $newId = $db->lastInsertRowID();
@@ -332,7 +334,8 @@ switch ($action) {
         'text' => $text,
         'type' => $type,
         'done' => 0,
-        'sort_order' => $newOrder
+        'sort_order' => $newOrder,
+        'deadline' => $deadline
       ], JSON_UNESCAPED_UNICODE);
     }
     break;
