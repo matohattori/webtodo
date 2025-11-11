@@ -1617,6 +1617,7 @@ function createItem(type = 'text', text = '', afterId = null, callback, options 
   const params = new URLSearchParams({text: preparedText, type});
   if (afterId) params.append('after_id', afterId);
   if (options.allowEmpty) params.append('allow_empty', '1');
+  if (options.deadline !== undefined) params.append('deadline', options.deadline || '');
 
   fetch(addUIDToURL('api.php?action=add'), {
     method: 'POST',
@@ -4305,7 +4306,16 @@ function handleEnter(item, li, content) {
   tempAfter.innerHTML = sanitizedAfter;
   const afterText = tempAfter.textContent.trim();
 
+  // Check if cursor is at beginning and item has deadline
+  // If so, deadline should move to the new line with the text
+  const shouldMoveDeadline = !beforeText && afterText && item.deadline;
+
   const insertNextRow = (nextTypeValue, textForNextRow) => {
+    const insertOptions = { allowEmpty: true, skipReload: true };
+    // If deadline should move to new item, pass it in options
+    if (shouldMoveDeadline) {
+      insertOptions.deadline = item.deadline;
+    }
     insertItemAfter(item.id, nextTypeValue, textForNextRow, (data) => {
       const newId = data && data.id;
       if (newId) {
@@ -4319,13 +4329,18 @@ function handleEnter(item, li, content) {
           setTimeout(() => focusItem(nextItem.id, { position: 'start' }), 100);
         }
       }
-    }, { allowEmpty: true, skipReload: true });
+    }, insertOptions);
   };
 
   const commitAndInsert = (updatedText, nextTypeValue, textForNextRow) => {
     const proceed = () => insertNextRow(nextTypeValue, textForNextRow);
-    if (updatedText !== item.text) {
-      updateItem(item.id, { text: updatedText }, proceed);
+    const updates = { text: updatedText };
+    // If deadline is moving to new item, clear it from current item
+    if (shouldMoveDeadline) {
+      updates.deadline = null;
+    }
+    if (updatedText !== item.text || shouldMoveDeadline) {
+      updateItem(item.id, updates, proceed);
     } else {
       proceed();
     }
