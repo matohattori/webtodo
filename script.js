@@ -2038,7 +2038,7 @@ function getDeadlineDisplay(deadlineStr) {
 }
 
 // Set deadline for an item
-function setDeadline(item, deadlineStr) {
+function setDeadline(item, deadlineStr, callback) {
   if (!item) return;
   
   captureStateForUndo('deadline', { itemId: item.id, oldDeadline: item.deadline });
@@ -2059,10 +2059,13 @@ function setDeadline(item, deadlineStr) {
   }
   
   item.deadline = deadlineStr;
-  updateItem(item.id, updates, undefined, { skipReload: true });
-  
-  // Re-render to show deadline indicator
-  render();
+  updateItem(item.id, updates, () => {
+    // Re-render to show deadline indicator
+    render();
+    if (typeof callback === 'function') {
+      callback();
+    }
+  }, { skipReload: true });
 }
 
 // Prompt for deadline
@@ -2084,21 +2087,24 @@ function promptForDeadline(item) {
     currentDeadline: currentValue,
     onSubmit: (value, helpers) => {
       if (value === null) {
-        setDeadline(item, null);
-        helpers.close();
+        setDeadline(item, null, () => {
+          helpers.close();
+        });
         return;
       }
       if (!value) {
-        setDeadline(item, null);
-        helpers.close();
+        setDeadline(item, null, () => {
+          helpers.close();
+        });
         return;
       }
       if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) {
         helpers.setError('正しい日付を入力してください');
         return false;
       }
-      setDeadline(item, value);
-      helpers.close();
+      setDeadline(item, value, () => {
+        helpers.close();
+      });
     },
     onCancel: () => {}
   });
