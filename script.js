@@ -2046,17 +2046,20 @@ function setDeadline(item, deadlineStr) {
   // Save any unsaved content before setting deadline
   const li = list.querySelector(`li[data-id="${item.id}"]`);
   const content = li ? li.querySelector('.task-content') : null;
+  const updates = { deadline: deadlineStr };
+  
   if (content) {
     // Sanitize and save the current content
     sanitizeContentInPlace(content);
     const sanitizedContent = sanitizeHtml(content.innerHTML);
     if (sanitizedContent !== item.text) {
       item.text = sanitizedContent;
+      updates.text = sanitizedContent;
     }
   }
   
   item.deadline = deadlineStr;
-  updateItem(item.id, { deadline: deadlineStr, text: item.text }, undefined, { skipReload: true });
+  updateItem(item.id, updates, undefined, { skipReload: true });
   
   // Re-render to show deadline indicator
   render();
