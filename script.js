@@ -519,7 +519,7 @@ title.style.cssText = 'margin: 0 0 12px; font-size: 16px; text-align: center;';
   passwordTitle.style.cssText = 'margin: 0 0 8px; font-size: 14px; color: #1e3a5f;';
   
   const currentPasswordLabel = document.createElement('label');
-  currentPasswordLabel.textContent = '現在のパスワード (変更時のみ)';
+  currentPasswordLabel.textContent = '現在のパスワード';
   currentPasswordLabel.style.cssText = 'display: block; font-size: 12px; margin-bottom: 3px; color: #4d5a6f;';
   
   const currentPasswordInput = document.createElement('input');
@@ -549,7 +549,7 @@ title.style.cssText = 'margin: 0 0 12px; font-size: 16px; text-align: center;';
     border-radius: 4px;
     font-size: 14px;
     box-sizing: border-box;
-    margin-bottom: 8px;
+    margin-bottom: 2px;
   `;
   
   const error = document.createElement('div');
@@ -568,7 +568,7 @@ title.style.cssText = 'margin: 0 0 12px; font-size: 16px; text-align: center;';
     border-radius: 4px;
     cursor: pointer;
     font-size: 14px;
-    margin-bottom: 12px;
+    margin-bottom: 4px;
   `;
   
   setPasswordBtn.onclick = async () => {
