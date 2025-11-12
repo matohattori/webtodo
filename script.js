@@ -4340,7 +4340,20 @@ function handleEnter(item, li, content) {
       updates.deadline = null;
     }
     if (updatedText !== item.text || shouldMoveDeadline) {
-      updateItem(item.id, updates, proceed);
+      // Pass skipReload: true to prevent full page reload and flicker
+      updateItem(item.id, updates, () => {
+        // If we cleared the deadline, immediately remove the deadline badge from DOM
+        if (shouldMoveDeadline) {
+          const currentLi = list.querySelector(`li[data-id="${item.id}"]`);
+          if (currentLi) {
+            const deadlineBadge = currentLi.querySelector('.deadline-indicator');
+            if (deadlineBadge) {
+              deadlineBadge.remove();
+            }
+          }
+        }
+        proceed();
+      }, { skipReload: true });
     } else {
       proceed();
     }
