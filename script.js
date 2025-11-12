@@ -4310,11 +4310,14 @@ function handleEnter(item, li, content) {
   // If so, deadline should move to the new line with the text
   const shouldMoveDeadline = !beforeText && afterText && item.deadline;
 
+  // Save the deadline before it gets cleared by updateItem
+  const savedDeadline = shouldMoveDeadline ? item.deadline : null;
+  
   const insertNextRow = (nextTypeValue, textForNextRow) => {
     const insertOptions = { allowEmpty: true, skipReload: true };
-    // If deadline should move to new item, pass it in options
-    if (shouldMoveDeadline) {
-      insertOptions.deadline = item.deadline;
+    // If deadline should move to new item, use the saved deadline value
+    if (shouldMoveDeadline && savedDeadline) {
+      insertOptions.deadline = savedDeadline;
     }
     insertItemAfter(item.id, nextTypeValue, textForNextRow, (data) => {
       const newId = data && data.id;
