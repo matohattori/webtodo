@@ -512,15 +512,15 @@ title.style.cssText = 'margin: 0 0 12px; font-size: 16px; text-align: center;';
   
   
   const passwordSection = document.createElement('div');
-  passwordSection.style.cssText = 'margin-bottom: 10px;';
+  passwordSection.style.cssText = 'margin-bottom: 8px;';
   
   const passwordTitle = document.createElement('h3');
-  passwordTitle.textContent = 'パスワード設定';
-  passwordTitle.style.cssText = 'margin: 0 0 10px; font-size: 14px; color: #1e3a5f;';
+  passwordTitle.textContent = 'パスワード変更';
+  passwordTitle.style.cssText = 'margin: 0 0 8px; font-size: 14px; color: #1e3a5f;';
   
   const currentPasswordLabel = document.createElement('label');
-  currentPasswordLabel.textContent = '現在のパスワード (変更時のみ)';
-  currentPasswordLabel.style.cssText = 'display: block; font-size: 12px; margin-bottom: 4px; color: #4d5a6f;';
+  currentPasswordLabel.textContent = '現在のパスワード';
+  currentPasswordLabel.style.cssText = 'display: block; font-size: 12px; margin-bottom: 3px; color: #4d5a6f;';
   
   const currentPasswordInput = document.createElement('input');
   currentPasswordInput.type = 'password';
@@ -532,12 +532,12 @@ title.style.cssText = 'margin: 0 0 12px; font-size: 16px; text-align: center;';
     border-radius: 4px;
     font-size: 14px;
     box-sizing: border-box;
-    margin-bottom: 12px;
+    margin-bottom: 8px;
   `;
   
   const newPasswordLabel = document.createElement('label');
   newPasswordLabel.textContent = '新しいパスワード';
-  newPasswordLabel.style.cssText = 'display: block; font-size: 12px; margin-bottom: 4px; color: #4d5a6f;';
+  newPasswordLabel.style.cssText = 'display: block; font-size: 12px; margin-bottom: 3px; color: #4d5a6f;';
   
   const newPasswordInput = document.createElement('input');
   newPasswordInput.type = 'password';
@@ -549,17 +549,17 @@ title.style.cssText = 'margin: 0 0 12px; font-size: 16px; text-align: center;';
     border-radius: 4px;
     font-size: 14px;
     box-sizing: border-box;
-    margin-bottom: 12px;
+    margin-bottom: 2px;
   `;
   
   const error = document.createElement('div');
-  error.style.cssText = 'color: #d53f3f; font-size: 12px; margin-bottom: 8px; min-height: 18px;';
+  error.style.cssText = 'color: #d53f3f; font-size: 12px; margin-bottom: 6px; min-height: 16px;';
   
   const success = document.createElement('div');
-  success.style.cssText = 'color: #249944; font-size: 12px; margin-bottom: 8px; min-height: 18px;';
+  success.style.cssText = 'color: #249944; font-size: 12px; margin-bottom: 6px; min-height: 16px;';
   
   const setPasswordBtn = document.createElement('button');
-  setPasswordBtn.textContent = 'パスワードを設定';
+  setPasswordBtn.textContent = 'パスワードを変更';
   setPasswordBtn.style.cssText = `
     padding: 8px 16px;
     background: #4a90e2;
@@ -568,7 +568,7 @@ title.style.cssText = 'margin: 0 0 12px; font-size: 16px; text-align: center;';
     border-radius: 4px;
     cursor: pointer;
     font-size: 14px;
-    margin-bottom: 16px;
+    margin-bottom: 4px;
   `;
   
   setPasswordBtn.onclick = async () => {
@@ -621,7 +621,7 @@ title.style.cssText = 'margin: 0 0 12px; font-size: 16px; text-align: center;';
   passwordSection.appendChild(setPasswordBtn);
   
   const buttons = document.createElement('div');
-  buttons.style.cssText = 'display: flex; justify-content: space-between; gap: 8px; margin-top: 12px;';
+  buttons.style.cssText = 'display: flex; justify-content: space-between; gap: 8px; margin-top: 8px;';
   
   const logoutBtn = document.createElement('button');
   logoutBtn.textContent = 'ログアウト';
