@@ -2038,16 +2038,34 @@ function getDeadlineDisplay(deadlineStr) {
 }
 
 // Set deadline for an item
-function setDeadline(item, deadlineStr) {
+function setDeadline(item, deadlineStr, callback) {
   if (!item) return;
   
   captureStateForUndo('deadline', { itemId: item.id, oldDeadline: item.deadline });
   
-  item.deadline = deadlineStr;
-  updateItem(item.id, { deadline: deadlineStr }, undefined, { skipReload: true });
+  // Save any unsaved content before setting deadline
+  const li = list.querySelector(`li[data-id="${item.id}"]`);
+  const content = li ? li.querySelector('.task-content') : null;
+  const updates = { deadline: deadlineStr };
   
-  // Re-render to show deadline indicator
-  render();
+  if (content) {
+    // Sanitize and save the current content
+    sanitizeContentInPlace(content);
+    const sanitizedContent = sanitizeHtml(content.innerHTML);
+    if (sanitizedContent !== item.text) {
+      item.text = sanitizedContent;
+      updates.text = sanitizedContent;
+    }
+  }
+  
+  item.deadline = deadlineStr;
+  updateItem(item.id, updates, () => {
+    // Re-render to show deadline indicator
+    render();
+    if (typeof callback === 'function') {
+      callback();
+    }
+  }, { skipReload: true });
 }
 
 // Prompt for deadline
@@ -2069,21 +2087,24 @@ function promptForDeadline(item) {
     currentDeadline: currentValue,
     onSubmit: (value, helpers) => {
       if (value === null) {
-        setDeadline(item, null);
-        helpers.close();
+        setDeadline(item, null, () => {
+          helpers.close();
+        });
         return;
       }
       if (!value) {
-        setDeadline(item, null);
-        helpers.close();
+        setDeadline(item, null, () => {
+          helpers.close();
+        });
         return;
       }
       if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) {
         helpers.setError('正しい日付を入力してください');
         return false;
       }
-      setDeadline(item, value);
-      helpers.close();
+      setDeadline(item, value, () => {
+        helpers.close();
+      });
     },
     onCancel: () => {}
   });
