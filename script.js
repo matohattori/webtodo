@@ -2043,8 +2043,20 @@ function setDeadline(item, deadlineStr) {
   
   captureStateForUndo('deadline', { itemId: item.id, oldDeadline: item.deadline });
   
+  // Save any unsaved content before setting deadline
+  const li = list.querySelector(`li[data-id="${item.id}"]`);
+  const content = li ? li.querySelector('.task-content') : null;
+  if (content) {
+    // Sanitize and save the current content
+    sanitizeContentInPlace(content);
+    const sanitizedContent = sanitizeHtml(content.innerHTML);
+    if (sanitizedContent !== item.text) {
+      item.text = sanitizedContent;
+    }
+  }
+  
   item.deadline = deadlineStr;
-  updateItem(item.id, { deadline: deadlineStr }, undefined, { skipReload: true });
+  updateItem(item.id, { deadline: deadlineStr, text: item.text }, undefined, { skipReload: true });
   
   // Re-render to show deadline indicator
   render();
