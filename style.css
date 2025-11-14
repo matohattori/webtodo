@@ -245,6 +245,48 @@ li[data-type="collapsible-heading"] .task-content {
   flex: 1;
 }
 
+/* GTD heading styling - distinctive GTD style */
+li[data-type="gtd-heading"] {
+  padding-bottom: 2px;
+  margin-bottom: 2px;
+}
+
+li[data-type="gtd-heading"] .gtd-heading-wrapper {
+  display: flex;
+  align-items: center;
+  flex: 1;
+  width: 100%;
+  border-bottom: 2px solid rgba(74, 163, 255, 0.5);
+  padding-bottom: 3px;
+  margin-bottom: 0;
+  margin-left: -6px;
+  padding-left: 6px;
+  background: rgba(74, 163, 255, 0.08);
+  border-radius: 3px 3px 0 0;
+}
+
+li[data-type="gtd-heading"] .task-content {
+  font-size: 13px;
+  font-weight: 600;
+  color: #2a7bd6;
+  margin: 0;
+  padding: 0;
+  flex: 1;
+}
+
+.gtd-icon {
+  font-size: 14px;
+  line-height: 1;
+  flex-shrink: 0;
+  user-select: none;
+  width: 20px;
+  height: 18px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin-right: 4px;
+}
+
 /* Collapse icon for collapsible heading */
 .collapse-icon {
   color: #999;

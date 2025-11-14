@@ -12,6 +12,7 @@
 - **水平線 (hr)**: 区切り線（編集不可）
 - **見出し (heading)**: 太字見出し
 - **折りたたみ見出し (collapsible-heading)**: クリックで配下の内容を折りたたみ／展開できる見出し
+- **GTD見出し (gtd-heading)**: GTD専用の見出し。その日の最初のアクセス時に配下にタスクがあればリマインド通知
 
 ### 🎯 操作方法
 
@@ -23,6 +24,7 @@
 - `/_` → 水平線
 - `/h` → 見出し
 - `/b` → 折りたたみ見出し
+- `/g` → GTD見出し
 
 #### キーボード操作
 - `Enter`: 行を確定し、次行を生成
@@ -49,6 +51,13 @@
 - 折りたたまれた状態では、見出し直後から次の見出しまたは水平線までのブロックが非表示
 - 折りたたみ状態はデータベースに保存され、ページリロード後も維持
 - キーボード操作：アイコンにフォーカス後、`Enter`または`Space`で切り替え
+
+#### GTD見出しリマインド機能
+- GTD見出し（📋アイコン付き）を作成すると、その配下のタスクを日次でリマインド
+- その日の最初のアクセス時、GTD見出し配下に未完了タスクがあればポップアップ通知
+- ポップアップから「OK（今日はもう大丈夫）」で当日のリマインドを停止
+- 「再通知」機能で5分/10分/60分後に再度通知可能
+- 設定画面で「リマインド済みフラグをリセット」すると、同じ日でも再度通知される
 
 ### 🎨 コンパクトな UI
 - 行高: 30px
@@ -78,9 +87,10 @@
 
 3. 基本操作:
    - テキストを入力して `Enter` で行追加
-   - `/c` でチェックボックス、`/-` でリスト、`/_` で水平線、`/h` で見出し、`/b` で折りたたみ見出しを作成
+   - `/c` でチェックボックス、`/-` でリスト、`/_` で水平線、`/h` で見出し、`/b` で折りたたみ見出し、`/g` でGTD見出しを作成
    - チェックボックスで完了/未完了を切り替え
    - 折りたたみ見出しの左側アイコンをクリックで折りたたみ／展開
+   - GTD見出しは初回アクセス時に配下のタスクをリマインド通知
    - `×` ボタンで削除
    - `Enter` で同じタイプの行を続けて作成
    - 空行で `Backspace` を押すと、リスト/チェックボックスはテキストに変換
@@ -99,13 +109,16 @@
 - **編集**: contenteditable とキーハンドリング
 - **保存**: SQLite3 経由の API
 - **データ構造**: `{ id, type, text, checked, order, collapsed }`
-  - `type`: 'text' | 'checkbox' | 'list' | 'hr' | 'heading' | 'collapsible-heading'
+  - `type`: 'text' | 'checkbox' | 'list' | 'hr' | 'heading' | 'collapsible-heading' | 'gtd-heading'
   - `order`: 入力順（ソートキー）
   - `collapsed`: 折りたたみ状態（collapsible-heading のみ）
+- **GTDリマインド**: localStorage でリマインド状態を管理（lastDate, doneForToday, snoozeUntil）
 
 ## 🗄️ データベース
 既存のデータベースは自動的にマイグレーションされます。
-- `type`: アイテムの種類（text/checkbox/list/hr/heading/collapsible-heading）
+- `type`: アイテムの種類（text/checkbox/list/hr/heading/collapsible-heading/gtd-heading）
 - `sort_order`: 並び順
 - `done`: チェック状態（既存フィールド、checkbox で使用）
 - `collapsed`: 折りたたみ状態（collapsible-heading で使用）
+
+GTDリマインド機能は localStorage を使用してブラウザごとに状態管理を行います。
