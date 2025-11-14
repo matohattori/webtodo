@@ -453,7 +453,7 @@ function showGTDReminderPopup(headingsWithContent) {
   `;
   
   const title = document.createElement('h2');
-  title.textContent = '📋 GTDリマインダー';
+  title.textContent = '⚠️ GTDリマインダー';
   title.style.cssText = 'margin: 0 0 16px 0; font-size: 18px; color: #2a7bd6; font-weight: 600;';
   
   const message = document.createElement('p');
@@ -650,6 +650,24 @@ function initializeApp() {
     settingsBtn.setAttribute('data-initialized', 'true');
   }
   
+  // Restore snooze timer if there's an active snooze
+  const state = getGTDReminderState();
+  if (state && state.snoozeUntil) {
+    const snoozeTime = new Date(state.snoozeUntil);
+    const now = new Date();
+    const remainingMs = snoozeTime - now;
+    
+    if (remainingMs > 0) {
+      // Snooze is still active, set timer for remaining time
+      if (gtdReminderSnoozeTimer) {
+        clearTimeout(gtdReminderSnoozeTimer);
+      }
+      gtdReminderSnoozeTimer = setTimeout(() => {
+        checkGTDReminders();
+      }, remainingMs);
+    }
+  }
+  
   // Check GTD reminders after a short delay to ensure items are loaded
   setTimeout(() => {
     checkGTDReminders();
@@ -805,6 +823,8 @@ function showSettingsDialog() {
     border-radius: 10px;
     box-shadow: 0 12px 32px rgba(0, 0, 0, 0.18);
     width: min(360px, 100%);
+    max-height: 80vh;
+    overflow-y: auto;
     box-sizing: border-box;
   `;
   
@@ -4116,6 +4136,22 @@ function render() {
     }
   });
   
+  // Build a set of items under GTD headings for styling
+  const gtdChildItems = new Set();
+  items.forEach((item, index) => {
+    if (item.type === 'gtd-heading') {
+      // Mark all items after this GTD heading until next heading or hr
+      for (let i = index + 1; i < items.length; i++) {
+        const nextItem = items[i];
+        if (nextItem.type === 'heading' || nextItem.type === 'collapsible-heading' || 
+            nextItem.type === 'gtd-heading' || nextItem.type === 'hr') {
+          break;
+        }
+        gtdChildItems.add(nextItem.id);
+      }
+    }
+  });
+  
   // Render all items, hiding those in collapsed sections
   items.forEach(item => {
     // Check if this item should be hidden
@@ -4128,7 +4164,8 @@ function render() {
     }
     
     if (!shouldHide) {
-      renderItem(item);
+      const isGtdChild = gtdChildItems.has(item.id);
+      renderItem(item, isGtdChild);
     }
   });
   
@@ -4144,12 +4181,17 @@ function render() {
 }
 
 // Render single item
-function renderItem(item) {
+function renderItem(item, isGtdChild = false) {
   const li = document.createElement('li');
   li.dataset.id = item.id;
   li.dataset.type = item.type;
   li.setAttribute('tabindex', '0');
   li.setAttribute('role', 'listitem');
+  
+  // Add class if this item is under a GTD heading
+  if (isGtdChild) {
+    li.classList.add('gtd-child-item');
+  }
   
   if (item.checked && item.type === 'checkbox') {
     li.classList.add('completed');
@@ -4217,7 +4259,7 @@ function renderItem(item) {
   if (item.type === 'gtd-heading') {
     gtdIcon = document.createElement('span');
     gtdIcon.className = 'gtd-icon';
-    gtdIcon.textContent = '📋';
+    gtdIcon.textContent = '⚠️';
     gtdIcon.setAttribute('aria-label', 'GTD見出し');
     gtdIcon.setAttribute('role', 'img');
   }

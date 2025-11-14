@@ -287,6 +287,18 @@ li[data-type="gtd-heading"] .task-content {
   margin-right: 4px;
 }
 
+/* Items under GTD headings - emphasized background */
+li.gtd-child-item {
+  background: rgba(255, 243, 205, 0.3);
+  margin-left: -4px;
+  padding-left: 8px;
+  border-left: 3px solid rgba(255, 193, 7, 0.4);
+}
+
+li.gtd-child-item:hover {
+  background: rgba(255, 243, 205, 0.5);
+}
+
 /* Collapse icon for collapsible heading */
 .collapse-icon {
   color: #999;
