@@ -245,6 +245,61 @@ li[data-type="collapsible-heading"] .task-content {
   flex: 1;
 }
 
+/* GTD heading styling - distinctive GTD style */
+li[data-type="gtd-heading"] {
+  padding-bottom: 2px;
+  margin-bottom: 2px;
+  background: none;
+}
+
+li[data-type="gtd-heading"] .gtd-heading-wrapper {
+  display: flex;
+  align-items: center;
+  flex: 1;
+  width: 100%;
+  border-bottom: 1px solid rgba(30, 58, 95, 0.35);
+  padding-bottom: 3px;
+  margin-bottom: 0;
+  margin-left: -6px;
+  padding-left: 6px;
+  background: none;
+  border-radius: 0;
+}
+
+li[data-type="gtd-heading"] .task-content {
+  font-size: 13px;
+  font-weight: 600;
+  color: #ec7932;
+  margin: 0;
+  padding: 0;
+  flex: 1;
+}
+
+.gtd-icon {
+  font-size: 14px;
+  line-height: 1;
+  flex-shrink: 0;
+  user-select: none;
+  width: 20px;
+  height: 18px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin-right: 4px;
+}
+
+/* Items under GTD headings - emphasized background */
+li.gtd-child-item {
+  background: rgba(255, 243, 205, 0.3);
+  margin-left: -4px;
+  padding-left: 8px;
+  border-left: 3px solid rgba(255, 136, 0, 0.4);
+}
+
+li.gtd-child-item:hover {
+  background: rgba(255, 243, 205, 0.5);
+}
+
 /* Collapse icon for collapsible heading */
 .collapse-icon {
   color: #999;

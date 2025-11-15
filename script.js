@@ -320,6 +320,316 @@ async function fetchUserAuthStatus(uid) {
   };
 }
 
+// GTD Reminder Management
+let gtdReminderSnoozeTimer = null;
+
+// Get today's date string (YYYY-MM-DD)
+function getTodayString() {
+  const now = new Date();
+  return now.toISOString().split('T')[0];
+}
+
+// Get GTD reminder state from localStorage
+function getGTDReminderState() {
+  try {
+    const state = localStorage.getItem('gtdReminderState');
+    if (!state) return null;
+    return JSON.parse(state);
+  } catch (err) {
+    console.error('Failed to load GTD reminder state:', err);
+    return null;
+  }
+}
+
+// Save GTD reminder state to localStorage
+function saveGTDReminderState(state) {
+  try {
+    localStorage.setItem('gtdReminderState', JSON.stringify(state));
+  } catch (err) {
+    console.error('Failed to save GTD reminder state:', err);
+  }
+}
+
+// Check if we should show GTD reminder
+function shouldShowGTDReminder() {
+  const state = getGTDReminderState();
+  const today = getTodayString();
+  
+  // Check if snooze is active
+  if (state && state.snoozeUntil) {
+    const snoozeTime = new Date(state.snoozeUntil);
+    if (snoozeTime > new Date()) {
+      return false; // Still snoozed
+    }
+  }
+  
+  // Check if already done for today
+  if (state && state.lastDate === today && state.doneForToday) {
+    return false;
+  }
+  
+  return true;
+}
+
+// Get GTD headings with non-empty content
+function getGTDHeadingsWithContent() {
+  const gtdHeadings = items.filter(item => item.type === 'gtd-heading');
+  const result = [];
+  
+  for (const heading of gtdHeadings) {
+    const headingIndex = items.indexOf(heading);
+    const contentItems = [];
+    
+    // Find content between this heading and the next heading/hr
+    for (let i = headingIndex + 1; i < items.length; i++) {
+      const item = items[i];
+      if (item.type === 'heading' || item.type === 'collapsible-heading' || 
+          item.type === 'gtd-heading' || item.type === 'hr') {
+        break;
+      }
+      
+      // Check if item has non-empty content
+      const text = (item.text || '').trim();
+      if (text.length > 0) {
+        contentItems.push(item);
+      }
+    }
+    
+    if (contentItems.length > 0) {
+      result.push({
+        heading,
+        contentItems,
+        preview: contentItems.slice(0, 3).map(item => {
+          const text = (item.text || '').replace(/<[^>]*>/g, '').trim();
+          return text.length > 50 ? text.substring(0, 50) + '...' : text;
+        })
+      });
+    }
+  }
+  
+  return result;
+}
+
+// Check GTD reminders and show popup if needed
+function checkGTDReminders() {
+  if (!shouldShowGTDReminder()) {
+    return;
+  }
+  
+  const headingsWithContent = getGTDHeadingsWithContent();
+  if (headingsWithContent.length === 0) {
+    return;
+  }
+  
+  showGTDReminderPopup(headingsWithContent);
+}
+
+// Show GTD reminder popup
+function showGTDReminderPopup(headingsWithContent) {
+  const overlay = document.createElement('div');
+  overlay.className = 'gtd-reminder-overlay';
+  overlay.style.cssText = `
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.5);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 16px;
+    z-index: 10000;
+  `;
+  
+  const dialog = document.createElement('div');
+  dialog.className = 'gtd-reminder-dialog';
+  dialog.style.cssText = `
+    background: white;
+    padding: 24px;
+    border-radius: 8px;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+    max-width: 500px;
+    width: 90%;
+    max-height: 80vh;
+    overflow-y: auto;
+  `;
+  
+  const title = document.createElement('h2');
+  title.textContent = '⚠️ GTDリマインダー';
+  title.style.cssText = 'margin: 0 0 16px 0; font-size: 18px; color: #2a7bd6; font-weight: 600;';
+  
+  const message = document.createElement('p');
+  message.textContent = '以下のGTD見出しにタスクが残っています：';
+  message.style.cssText = 'margin: 0 0 16px 0; font-size: 14px; color: #333;';
+  
+  const list = document.createElement('div');
+  list.style.cssText = 'margin: 0 0 20px 0;';
+  
+  headingsWithContent.forEach(({ heading, contentItems, preview }) => {
+    const itemDiv = document.createElement('div');
+    itemDiv.style.cssText = 'margin-bottom: 12px; padding: 12px; background: #f9f9f9; border-radius: 4px; border-left: 3px solid #4aa3ff;';
+    
+    const headingText = document.createElement('div');
+    headingText.textContent = heading.text || '(無題)';
+    headingText.style.cssText = 'font-weight: 600; color: #2a7bd6; margin-bottom: 6px; font-size: 14px;';
+    
+    const countText = document.createElement('div');
+    countText.textContent = `${contentItems.length}件のタスク`;
+    countText.style.cssText = 'font-size: 12px; color: #666; margin-bottom: 6px;';
+    
+    itemDiv.appendChild(headingText);
+    itemDiv.appendChild(countText);
+    
+    if (preview.length > 0) {
+      const previewDiv = document.createElement('div');
+      previewDiv.style.cssText = 'font-size: 12px; color: #888; margin-top: 6px;';
+      preview.forEach(text => {
+        const previewLine = document.createElement('div');
+        previewLine.textContent = '• ' + text;
+        previewLine.style.cssText = 'margin-bottom: 2px;';
+        previewDiv.appendChild(previewLine);
+      });
+      itemDiv.appendChild(previewDiv);
+    }
+    
+    list.appendChild(itemDiv);
+  });
+  
+  const snoozeContainer = document.createElement('div');
+  snoozeContainer.style.cssText = 'margin-bottom: 16px;';
+  
+  const snoozeLabel = document.createElement('label');
+  snoozeLabel.textContent = '再通知時間：';
+  snoozeLabel.style.cssText = 'display: block; font-size: 13px; margin-bottom: 6px; color: #555;';
+  
+  const snoozeSelect = document.createElement('select');
+  snoozeSelect.style.cssText = 'width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px; font-size: 13px;';
+  snoozeSelect.innerHTML = `
+    <option value="5">5分後</option>
+    <option value="10" selected>10分後</option>
+    <option value="60">60分後</option>
+  `;
+  
+  snoozeContainer.appendChild(snoozeLabel);
+  snoozeContainer.appendChild(snoozeSelect);
+  
+  const buttons = document.createElement('div');
+  buttons.style.cssText = 'display: flex; justify-content: flex-end; gap: 8px;';
+  
+  const snoozeBtn = document.createElement('button');
+  snoozeBtn.textContent = '再通知';
+  snoozeBtn.style.cssText = `
+    padding: 10px 16px;
+    background: #f0f0f0;
+    color: #333;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 14px;
+  `;
+  
+  const okBtn = document.createElement('button');
+  okBtn.textContent = 'OK（今日はもう大丈夫）';
+  okBtn.style.cssText = `
+    padding: 10px 16px;
+    background: #4aa3ff;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 14px;
+  `;
+  
+  snoozeBtn.onclick = () => {
+    const minutes = parseInt(snoozeSelect.value);
+    const snoozeUntil = new Date();
+    snoozeUntil.setMinutes(snoozeUntil.getMinutes() + minutes);
+    
+    saveGTDReminderState({
+      lastDate: getTodayString(),
+      doneForToday: false,
+      snoozeUntil: snoozeUntil.toISOString()
+    });
+    
+    // Set timer to show popup again
+    if (gtdReminderSnoozeTimer) {
+      clearTimeout(gtdReminderSnoozeTimer);
+    }
+    gtdReminderSnoozeTimer = setTimeout(() => {
+      checkGTDReminders();
+    }, minutes * 60 * 1000);
+    
+    overlay.remove();
+  };
+  
+  okBtn.onclick = () => {
+    saveGTDReminderState({
+      lastDate: getTodayString(),
+      doneForToday: true,
+      snoozeUntil: null
+    });
+    
+    if (gtdReminderSnoozeTimer) {
+      clearTimeout(gtdReminderSnoozeTimer);
+      gtdReminderSnoozeTimer = null;
+    }
+    
+    overlay.remove();
+  };
+  
+  buttons.appendChild(snoozeBtn);
+  buttons.appendChild(okBtn);
+  
+  dialog.appendChild(title);
+  dialog.appendChild(message);
+  dialog.appendChild(list);
+  dialog.appendChild(snoozeContainer);
+  dialog.appendChild(buttons);
+  overlay.appendChild(dialog);
+  document.body.appendChild(overlay);
+  
+  // Allow closing with Escape
+  const handleEscape = (e) => {
+    if (e.key === 'Escape') {
+      okBtn.click();
+      document.removeEventListener('keydown', handleEscape);
+    }
+  };
+  document.addEventListener('keydown', handleEscape);
+}
+
+// Reset GTD reminder state (for settings)
+function resetGTDReminderState() {
+  saveGTDReminderState({
+    lastDate: null,
+    doneForToday: false,
+    snoozeUntil: null
+  });
+  
+  if (gtdReminderSnoozeTimer) {
+    clearTimeout(gtdReminderSnoozeTimer);
+    gtdReminderSnoozeTimer = null;
+  }
+}
+
+// Get current GTD reminder status for display
+function getGTDReminderStatus() {
+  const state = getGTDReminderState();
+  const today = getTodayString();
+  
+  if (!state) {
+    return { doneForToday: false, lastDate: null, snoozed: false };
+  }
+  
+  const snoozed = state.snoozeUntil && new Date(state.snoozeUntil) > new Date();
+  const doneForToday = state.lastDate === today && state.doneForToday;
+  
+  return {
+    doneForToday,
+    lastDate: state.lastDate,
+    snoozed,
+    snoozeUntil: state.snoozeUntil
+  };
+}
+
 // Initialize the app after login
 function initializeApp() {
   loadPresets();
@@ -339,6 +649,29 @@ function initializeApp() {
     settingsBtn.addEventListener('click', showSettingsDialog);
     settingsBtn.setAttribute('data-initialized', 'true');
   }
+  
+  // Restore snooze timer if there's an active snooze
+  const state = getGTDReminderState();
+  if (state && state.snoozeUntil) {
+    const snoozeTime = new Date(state.snoozeUntil);
+    const now = new Date();
+    const remainingMs = snoozeTime - now;
+    
+    if (remainingMs > 0) {
+      // Snooze is still active, set timer for remaining time
+      if (gtdReminderSnoozeTimer) {
+        clearTimeout(gtdReminderSnoozeTimer);
+      }
+      gtdReminderSnoozeTimer = setTimeout(() => {
+        checkGTDReminders();
+      }, remainingMs);
+    }
+  }
+  
+  // Check GTD reminders after a short delay to ensure items are loaded
+  setTimeout(() => {
+    checkGTDReminders();
+  }, 1000);
 }
 
 // Show password prompt dialog
@@ -490,6 +823,8 @@ function showSettingsDialog() {
     border-radius: 10px;
     box-shadow: 0 12px 32px rgba(0, 0, 0, 0.18);
     width: min(360px, 100%);
+    max-height: 80vh;
+    overflow-y: auto;
     box-sizing: border-box;
   `;
   
@@ -561,13 +896,17 @@ title.style.cssText = 'margin: 0 0 12px; font-size: 16px; text-align: center;';
   const setPasswordBtn = document.createElement('button');
   setPasswordBtn.textContent = 'パスワードを変更';
   setPasswordBtn.style.cssText = `
-    padding: 8px 16px;
+    padding: 10px 16px;
     background: #4a90e2;
-    color: white;
+    color: #fff;
     border: none;
     border-radius: 4px;
     cursor: pointer;
-    font-size: 14px;
+    font-size: 13px;
+    font-weight: 600;
+    width: 100%;
+    box-shadow: 0 2px 6px rgba(74, 144, 226, 0.25);
+    transition: background-color 0.15s ease, box-shadow 0.15s ease;
     margin-bottom: 4px;
   `;
   
@@ -620,6 +959,62 @@ title.style.cssText = 'margin: 0 0 12px; font-size: 16px; text-align: center;';
   passwordSection.appendChild(success);
   passwordSection.appendChild(setPasswordBtn);
   
+  // GTD Reminder Section
+  const gtdSection = document.createElement('div');
+  gtdSection.style.cssText = 'margin-bottom: 8px; margin-top: 12px; padding-top: 12px; border-top: 1px solid #e5e5e5;';
+  
+  const gtdTitle = document.createElement('h3');
+  gtdTitle.textContent = 'GTD見出しリマインド';
+  gtdTitle.style.cssText = 'margin: 0 0 8px; font-size: 14px; color: #1e3a5f;';
+  
+  const gtdStatus = getGTDReminderStatus();
+  const gtdStatusText = document.createElement('div');
+  gtdStatusText.style.cssText = 'font-size: 13px; color: #666; margin-bottom: 8px; padding: 8px; background: #f9f9f9; border-radius: 4px;';
+  
+  let statusMsg = '';
+  if (gtdStatus.snoozed) {
+    const snoozeTime = new Date(gtdStatus.snoozeUntil);
+    statusMsg = `スヌーズ中（${snoozeTime.toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' })}まで）`;
+  } else if (gtdStatus.doneForToday) {
+    statusMsg = '本日リマインド済み';
+  } else {
+    statusMsg = '未リマインド';
+  }
+  gtdStatusText.textContent = `状態: ${statusMsg}`;
+  
+  const gtdResetBtn = document.createElement('button');
+  gtdResetBtn.textContent = 'リマインド済みフラグをリセット';
+  gtdResetBtn.style.cssText = `
+    padding: 10px 16px;
+    background: #4a90e2;
+    color: #fff;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: 600;
+    width: 100%;
+    box-shadow: 0 2px 6px rgba(74, 144, 226, 0.25);
+    transition: background-color 0.15s ease, box-shadow 0.15s ease;
+  `;
+  
+  const gtdResetSuccess = document.createElement('div');
+  gtdResetSuccess.style.cssText = 'color: #249944; font-size: 12px; margin-top: 6px; min-height: 16px;';
+  
+  gtdResetBtn.onclick = () => {
+    resetGTDReminderState();
+    gtdResetSuccess.textContent = 'リセットしました。次回アクセス時に再チェックされます。';
+    gtdStatusText.textContent = '状態: 未リマインド';
+    setTimeout(() => {
+      gtdResetSuccess.textContent = '';
+    }, 3000);
+  };
+  
+  gtdSection.appendChild(gtdTitle);
+  gtdSection.appendChild(gtdStatusText);
+  gtdSection.appendChild(gtdResetBtn);
+  gtdSection.appendChild(gtdResetSuccess);
+  
   const buttons = document.createElement('div');
   buttons.style.cssText = 'display: flex; justify-content: space-between; gap: 8px; margin-top: 8px;';
   
@@ -667,6 +1062,7 @@ title.style.cssText = 'margin: 0 0 12px; font-size: 16px; text-align: center;';
   dialog.appendChild(title);
   dialog.appendChild(uidSection);
   dialog.appendChild(passwordSection);
+  dialog.appendChild(gtdSection);
   dialog.appendChild(buttons);
   overlay.appendChild(dialog);
   document.body.appendChild(overlay);
@@ -733,6 +1129,7 @@ const COLLAPSE_ICON_GLYPH = '\uE96E';
 const FORMAT_MENU_OPTIONS = [
   { type: 'heading', label: '見出し', command: '/h' },
   { type: 'collapsible-heading', label: '折りたたみ見出し', command: '/b' },
+  { type: 'gtd-heading', label: 'GTD見出し', command: '/g' },
   { type: 'checkbox', label: 'チェックボックス', command: '/c' },
   { type: 'list', label: '箇条書き', command: '/-' },
   { type: 'hr', label: '水平線', command: '/_' },
@@ -3746,6 +4143,22 @@ function render() {
     }
   });
   
+  // Build a set of items under GTD headings for styling
+  const gtdChildItems = new Set();
+  items.forEach((item, index) => {
+    if (item.type === 'gtd-heading') {
+      // Mark all items after this GTD heading until next heading or hr
+      for (let i = index + 1; i < items.length; i++) {
+        const nextItem = items[i];
+        if (nextItem.type === 'heading' || nextItem.type === 'collapsible-heading' || 
+            nextItem.type === 'gtd-heading' || nextItem.type === 'hr') {
+          break;
+        }
+        gtdChildItems.add(nextItem.id);
+      }
+    }
+  });
+  
   // Render all items, hiding those in collapsed sections
   items.forEach(item => {
     // Check if this item should be hidden
@@ -3758,7 +4171,8 @@ function render() {
     }
     
     if (!shouldHide) {
-      renderItem(item);
+      const isGtdChild = gtdChildItems.has(item.id);
+      renderItem(item, isGtdChild);
     }
   });
   
@@ -3774,12 +4188,17 @@ function render() {
 }
 
 // Render single item
-function renderItem(item) {
+function renderItem(item, isGtdChild = false) {
   const li = document.createElement('li');
   li.dataset.id = item.id;
   li.dataset.type = item.type;
   li.setAttribute('tabindex', '0');
   li.setAttribute('role', 'listitem');
+  
+  // Add class if this item is under a GTD heading
+  if (isGtdChild) {
+    li.classList.add('gtd-child-item');
+  }
   
   if (item.checked && item.type === 'checkbox') {
     li.classList.add('completed');
@@ -3842,6 +4261,16 @@ function renderItem(item) {
     });
   }
   
+  // GTD icon for gtd-heading type
+  let gtdIcon = null;
+  if (item.type === 'gtd-heading') {
+    gtdIcon = document.createElement('span');
+    gtdIcon.className = 'gtd-icon';
+    gtdIcon.textContent = '⚠️';
+    gtdIcon.setAttribute('aria-label', 'GTD見出し');
+    gtdIcon.setAttribute('role', 'img');
+  }
+  
   // Content (contenteditable)
   const content = document.createElement('div');
   content.className = 'task-content';
@@ -3898,6 +4327,12 @@ function renderItem(item) {
     headingWrapper.className = 'collapsible-heading-wrapper';
     headingWrapper.appendChild(content);
     headingWrapper.appendChild(collapseIcon);
+    li.appendChild(headingWrapper);
+  } else if (item.type === 'gtd-heading' && gtdIcon) {
+    const headingWrapper = document.createElement('div');
+    headingWrapper.className = 'gtd-heading-wrapper';
+    headingWrapper.appendChild(gtdIcon);
+    headingWrapper.appendChild(content);
     li.appendChild(headingWrapper);
   } else {
     li.appendChild(content);
@@ -4021,6 +4456,7 @@ function getAriaLabel(type) {
   switch(type) {
     case 'heading': return '見出し';
     case 'collapsible-heading': return '折りたたみ見出し';
+    case 'gtd-heading': return 'GTD見出し';
     case 'checkbox': return 'チェックボックス';
     case 'list': return 'リスト項目';
     default: return 'テキスト';
@@ -4029,7 +4465,7 @@ function getAriaLabel(type) {
 
 // Get placeholder based on type
 function getPlaceholder() {
-  return '[/h]Header, [/b]Collapsible, [/c]Check, [/-]List, [/_]Line';
+  return '[/h]Header, [/b]Collapsible, [/g]GTD, [/c]Check, [/-]List, [/_]Line';
 }
 
 // Setup content event handlers
