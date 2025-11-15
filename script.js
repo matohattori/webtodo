@@ -329,6 +329,124 @@ function getTodayString() {
   return now.toISOString().split('T')[0];
 }
 
+// Get GTD processing procedure from localStorage
+function getGTDProcedure() {
+  try {
+    return localStorage.getItem('gtdProcedure') || '';
+  } catch (err) {
+    console.error('Failed to load GTD procedure:', err);
+    return '';
+  }
+}
+
+// Save GTD processing procedure to localStorage
+function saveGTDProcedure(procedure) {
+  try {
+    localStorage.setItem('gtdProcedure', procedure);
+  } catch (err) {
+    console.error('Failed to save GTD procedure:', err);
+  }
+}
+
+// GTD Procedure Tooltip Management
+let gtdProcedureTooltip = null;
+let gtdProcedureTooltipStylesInjected = false;
+let currentGTDProcedureTooltipTarget = null;
+
+function injectGTDProcedureTooltipStyles() {
+  if (gtdProcedureTooltipStylesInjected) return;
+  const style = document.createElement('style');
+  style.textContent = `
+.gtd-procedure-tooltip {
+  position: fixed;
+  padding: 8px 12px;
+  background: rgba(34, 34, 34, 0.95);
+  color: #fff;
+  font-size: 13px;
+  border-radius: 6px;
+  pointer-events: none;
+  z-index: 9999;
+  opacity: 0;
+  transition: opacity 150ms ease;
+  max-width: 400px;
+  word-wrap: break-word;
+  white-space: pre-wrap;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25);
+  line-height: 1.6;
+}
+.gtd-procedure-tooltip.visible {
+  opacity: 1;
+}
+`;
+  document.head.appendChild(style);
+  gtdProcedureTooltipStylesInjected = true;
+}
+
+function ensureGTDProcedureTooltip() {
+  if (gtdProcedureTooltip) return gtdProcedureTooltip;
+  injectGTDProcedureTooltipStyles();
+  gtdProcedureTooltip = document.createElement('div');
+  gtdProcedureTooltip.className = 'gtd-procedure-tooltip';
+  document.body.appendChild(gtdProcedureTooltip);
+  return gtdProcedureTooltip;
+}
+
+function showGTDProcedureTooltip(element) {
+  if (!element) return;
+  
+  const procedureText = getGTDProcedure();
+  if (!procedureText || procedureText.trim() === '') {
+    return; // Don't show tooltip if no procedure is set
+  }
+  
+  const tooltip = ensureGTDProcedureTooltip();
+  currentGTDProcedureTooltipTarget = element;
+  tooltip.classList.remove('visible');
+  tooltip.textContent = procedureText;
+
+  // Position tooltip below the element, within viewport
+  tooltip.style.left = '0px';
+  tooltip.style.top = '0px';
+  const rect = element.getBoundingClientRect();
+  const tooltipRect = tooltip.getBoundingClientRect();
+  const margin = 8;
+  const viewportWidth = window.innerWidth || document.documentElement.clientWidth;
+  const viewportHeight = window.innerHeight || document.documentElement.clientHeight;
+
+  let left = rect.left + window.scrollX;
+  if (left + tooltipRect.width + margin > window.scrollX + viewportWidth) {
+    left = window.scrollX + viewportWidth - tooltipRect.width - margin;
+  }
+  if (left < window.scrollX + margin) {
+    left = window.scrollX + margin;
+  }
+  
+  let top = rect.bottom + window.scrollY + margin;
+  // If tooltip would go below viewport, show it above the element instead
+  if (top + tooltipRect.height > window.scrollY + viewportHeight) {
+    top = rect.top + window.scrollY - tooltipRect.height - margin;
+  }
+
+  tooltip.style.left = `${Math.max(left, margin)}px`;
+  tooltip.style.top = `${Math.max(top, margin)}px`;
+
+  requestAnimationFrame(() => {
+    if (currentGTDProcedureTooltipTarget === element) {
+      tooltip.classList.add('visible');
+    }
+  });
+}
+
+function hideGTDProcedureTooltip() {
+  currentGTDProcedureTooltipTarget = null;
+  if (gtdProcedureTooltip) {
+    gtdProcedureTooltip.classList.remove('visible');
+  }
+}
+
+window.addEventListener('scroll', hideGTDProcedureTooltip, true);
+window.addEventListener('blur', hideGTDProcedureTooltip);
+
 // Get GTD reminder state from localStorage
 function getGTDReminderState() {
   try {
@@ -1015,6 +1133,67 @@ title.style.cssText = 'margin: 0 0 12px; font-size: 16px; text-align: center;';
   gtdSection.appendChild(gtdResetBtn);
   gtdSection.appendChild(gtdResetSuccess);
   
+  // GTD Processing Procedure Section
+  const gtdProcedureSection = document.createElement('div');
+  gtdProcedureSection.style.cssText = 'margin-bottom: 8px; margin-top: 12px; padding-top: 12px; border-top: 1px solid #e5e5e5;';
+  
+  const gtdProcedureTitle = document.createElement('h3');
+  gtdProcedureTitle.textContent = 'GTD処理手順';
+  gtdProcedureTitle.style.cssText = 'margin: 0 0 8px; font-size: 14px; color: #1e3a5f;';
+  
+  const gtdProcedureTextarea = document.createElement('textarea');
+  gtdProcedureTextarea.placeholder = 'GTD見出しのアイコンをホバーした際に表示される処理手順を入力してください';
+  gtdProcedureTextarea.style.cssText = `
+    width: 100%;
+    min-height: 120px;
+    padding: 8px 12px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    font-size: 13px;
+    font-family: inherit;
+    box-sizing: border-box;
+    margin-bottom: 8px;
+    resize: vertical;
+    line-height: 1.5;
+  `;
+  
+  // Load saved GTD procedure from localStorage
+  const savedProcedure = getGTDProcedure();
+  gtdProcedureTextarea.value = savedProcedure || '';
+  
+  const gtdProcedureSaveBtn = document.createElement('button');
+  gtdProcedureSaveBtn.textContent = '保存';
+  gtdProcedureSaveBtn.style.cssText = `
+    padding: 10px 16px;
+    background: #4a90e2;
+    color: #fff;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: 600;
+    width: 100%;
+    box-shadow: 0 2px 6px rgba(74, 144, 226, 0.25);
+    transition: background-color 0.15s ease, box-shadow 0.15s ease;
+  `;
+  
+  const gtdProcedureSaveSuccess = document.createElement('div');
+  gtdProcedureSaveSuccess.style.cssText = 'color: #249944; font-size: 12px; margin-top: 6px; min-height: 16px;';
+  
+  gtdProcedureSaveBtn.onclick = () => {
+    const procedureText = gtdProcedureTextarea.value;
+    saveGTDProcedure(procedureText);
+    gtdProcedureSaveSuccess.textContent = '保存しました';
+    setTimeout(() => {
+      gtdProcedureSaveSuccess.textContent = '';
+    }, 3000);
+  };
+  
+  gtdProcedureSection.appendChild(gtdProcedureTitle);
+  gtdProcedureSection.appendChild(gtdProcedureTextarea);
+  gtdProcedureSection.appendChild(gtdProcedureSaveBtn);
+  gtdProcedureSection.appendChild(gtdProcedureSaveSuccess);
+  
   const buttons = document.createElement('div');
   buttons.style.cssText = 'display: flex; justify-content: space-between; gap: 8px; margin-top: 8px;';
   
@@ -1063,6 +1242,7 @@ title.style.cssText = 'margin: 0 0 12px; font-size: 16px; text-align: center;';
   dialog.appendChild(uidSection);
   dialog.appendChild(passwordSection);
   dialog.appendChild(gtdSection);
+  dialog.appendChild(gtdProcedureSection);
   dialog.appendChild(buttons);
   overlay.appendChild(dialog);
   document.body.appendChild(overlay);
@@ -4269,6 +4449,14 @@ function renderItem(item, isGtdChild = false) {
     gtdIcon.textContent = '⚠️';
     gtdIcon.setAttribute('aria-label', 'GTD見出し');
     gtdIcon.setAttribute('role', 'img');
+    
+    // Add hover event handlers for GTD procedure tooltip
+    gtdIcon.addEventListener('mouseenter', function() {
+      showGTDProcedureTooltip(gtdIcon);
+    });
+    gtdIcon.addEventListener('mouseleave', function() {
+      hideGTDProcedureTooltip();
+    });
   }
   
   // Content (contenteditable)
