@@ -1,8 +1,7 @@
-﻿// Data structure: { id, type, text, checked, order, decoration, deadline, collapsed }
-// type: 'text' | 'checkbox' | 'list' | 'hr' | 'heading' | 'collapsible-heading'
+﻿// Data structure: { id, type, text, checked, order, decoration, deadline }
+// type: 'text' | 'checkbox' | 'list' | 'hr' | 'heading'
 // decoration: { presetId } or null
 // deadline: ISO date string or null
-// collapsed: boolean (only for collapsible-heading)
 
 // User ID Management for per-user database separation
 let userID = null;
@@ -620,6 +619,45 @@ title.style.cssText = 'margin: 0 0 12px; font-size: 16px; text-align: center;';
   passwordSection.appendChild(success);
   passwordSection.appendChild(setPasswordBtn);
   
+  // GTD Procedure Section
+  const gtdSection = document.createElement('div');
+  gtdSection.style.cssText = 'margin-bottom: 8px; margin-top: 14px;';
+  
+  const gtdTitle = document.createElement('h3');
+  gtdTitle.textContent = 'GTD処理手順';
+  gtdTitle.style.cssText = 'margin: 0 0 8px; font-size: 14px; color: #1e3a5f;';
+  
+  const gtdLabel = document.createElement('label');
+  gtdLabel.textContent = 'GTD処理手順メモ（見出しの警告マークにホバーで表示）';
+  gtdLabel.style.cssText = 'display: block; font-size: 12px; margin-bottom: 3px; color: #4d5a6f;';
+  
+  const gtdTextarea = document.createElement('textarea');
+  gtdTextarea.placeholder = '例：\n1. 収集 - すべてのタスクを集める\n2. 整理 - 各項目を分類する\n3. 見直し - 定期的にレビュー';
+  gtdTextarea.style.cssText = `
+    width: 100%;
+    min-height: 100px;
+    padding: 8px 12px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    font-size: 13px;
+    box-sizing: border-box;
+    font-family: inherit;
+    resize: vertical;
+  `;
+  
+  // Load saved GTD procedure from localStorage
+  const savedGtdProcedure = localStorage.getItem('gtdProcedure') || '';
+  gtdTextarea.value = savedGtdProcedure;
+  
+  // Save GTD procedure on input
+  gtdTextarea.addEventListener('input', () => {
+    localStorage.setItem('gtdProcedure', gtdTextarea.value);
+  });
+  
+  gtdSection.appendChild(gtdTitle);
+  gtdSection.appendChild(gtdLabel);
+  gtdSection.appendChild(gtdTextarea);
+  
   const buttons = document.createElement('div');
   buttons.style.cssText = 'display: flex; justify-content: space-between; gap: 8px; margin-top: 8px;';
   
@@ -667,6 +705,7 @@ title.style.cssText = 'margin: 0 0 12px; font-size: 16px; text-align: center;';
   dialog.appendChild(title);
   dialog.appendChild(uidSection);
   dialog.appendChild(passwordSection);
+  dialog.appendChild(gtdSection);
   dialog.appendChild(buttons);
   overlay.appendChild(dialog);
   document.body.appendChild(overlay);
@@ -727,12 +766,8 @@ let decorationPresets = [];
 
 const list = document.getElementById('todoList');
 
-// Segoe Fluent icon code for collapsible headings (ChevronDown)
-const COLLAPSE_ICON_GLYPH = '\uE96E';
-
 const FORMAT_MENU_OPTIONS = [
   { type: 'heading', label: '見出し', command: '/h' },
-  { type: 'collapsible-heading', label: '折りたたみ見出し', command: '/b' },
   { type: 'checkbox', label: 'チェックボックス', command: '/c' },
   { type: 'list', label: '箇条書き', command: '/-' },
   { type: 'hr', label: '水平線', command: '/_' },
@@ -936,15 +971,20 @@ function addItemFromServer(data) {
     return item;
   });
   
+  // Convert collapsible-heading to regular heading
+  let itemType = data.type || 'text';
+  if (itemType === 'collapsible-heading') {
+    itemType = 'heading';
+  }
+  
   const newItem = {
     id: data.id,
-    type: data.type || 'text',
+    type: itemType,
     text: data.text || '',
     checked: Number(data.done) === 1,
     order: newOrder,
     decoration: data.decoration || null,
-    deadline: data.deadline || null,
-    collapsed: Number(data.collapsed) === 1
+    deadline: data.deadline || null
   };
   
   items.push(newItem);
@@ -3700,35 +3740,7 @@ function removeHyperlink(anchor, content, item) {
   savedSelection = null;
 }
 
-// Toggle collapse state for a collapsible heading
-function toggleCollapse(headingId) {
-  const item = items.find(i => i.id === headingId);
-  if (!item || item.type !== 'collapsible-heading') return;
-  
-  const newCollapsedState = !item.collapsed;
-  item.collapsed = newCollapsedState;
-  
-  updateItem(item.id, { collapsed: newCollapsedState }, () => {
-    render();
-  }, { skipReload: true });
-}
 
-// Get items that should be hidden when a heading is collapsed
-function getCollapsibleChildren(headingId) {
-  const headingIndex = items.findIndex(i => i.id === headingId);
-  if (headingIndex === -1) return [];
-  
-  const children = [];
-  for (let i = headingIndex + 1; i < items.length; i++) {
-    const item = items[i];
-    // Stop at next heading, collapsible-heading, or horizontal rule
-    if (item.type === 'heading' || item.type === 'collapsible-heading' || item.type === 'hr') {
-      break;
-    }
-    children.push(item.id);
-  }
-  return children;
-}
 
 // Render all items
 function render() {
@@ -3737,29 +3749,9 @@ function render() {
   // Sort items by order
   items.sort((a, b) => a.order - b.order);
   
-  // Build a map of collapsed sections
-  const collapsedSections = new Map();
+  // Render all items
   items.forEach(item => {
-    if (item.type === 'collapsible-heading' && item.collapsed) {
-      const children = getCollapsibleChildren(item.id);
-      collapsedSections.set(item.id, children);
-    }
-  });
-  
-  // Render all items, hiding those in collapsed sections
-  items.forEach(item => {
-    // Check if this item should be hidden
-    let shouldHide = false;
-    for (const [headingId, childIds] of collapsedSections) {
-      if (childIds.includes(item.id)) {
-        shouldHide = true;
-        break;
-      }
-    }
-    
-    if (!shouldHide) {
-      renderItem(item);
-    }
+    renderItem(item);
   });
   
   // If no items exist, show single input row
@@ -3817,30 +3809,7 @@ function renderItem(item) {
     li.appendChild(bullet);
   }
   
-  let collapseIcon = null;
-  // Collapse icon for collapsible-heading type
-  if (item.type === 'collapsible-heading') {
-    collapseIcon = document.createElement('span');
-    collapseIcon.className = 'collapse-icon';
-    collapseIcon.textContent = COLLAPSE_ICON_GLYPH;
-    collapseIcon.classList.toggle('is-collapsed', item.collapsed);
-    collapseIcon.classList.toggle('is-expanded', !item.collapsed);
-    collapseIcon.setAttribute('aria-pressed', (!item.collapsed).toString());
-    collapseIcon.setAttribute('aria-label', item.collapsed ? '展開' : '折りたたみ');
-    collapseIcon.setAttribute('role', 'button');
-    collapseIcon.setAttribute('tabindex', '0');
-    collapseIcon.addEventListener('click', (e) => {
-      e.stopPropagation();
-      toggleCollapse(item.id);
-    });
-    collapseIcon.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter' || e.key === ' ') {
-        e.preventDefault();
-        e.stopPropagation();
-        toggleCollapse(item.id);
-      }
-    });
-  }
+
   
   // Content (contenteditable)
   const content = document.createElement('div');
@@ -3893,14 +3862,41 @@ function renderItem(item) {
   // Setup content event handlers
   setupContentHandlers(content, item, li);
   
-  if (item.type === 'collapsible-heading' && collapseIcon) {
-    const headingWrapper = document.createElement('div');
-    headingWrapper.className = 'collapsible-heading-wrapper';
-    headingWrapper.appendChild(content);
-    headingWrapper.appendChild(collapseIcon);
-    li.appendChild(headingWrapper);
-  } else {
-    li.appendChild(content);
+  li.appendChild(content);
+  
+  // GTD warning mark for headings
+  if (item.type === 'heading') {
+    const gtdWarningMark = document.createElement('span');
+    gtdWarningMark.className = 'gtd-warning-mark';
+    gtdWarningMark.textContent = '⚠';
+    gtdWarningMark.style.cssText = `
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 18px;
+      height: 18px;
+      font-size: 12px;
+      color: #ff9800;
+      cursor: help;
+      margin-left: 6px;
+      flex-shrink: 0;
+    `;
+    gtdWarningMark.setAttribute('aria-label', 'GTD処理手順');
+    gtdWarningMark.setAttribute('role', 'button');
+    gtdWarningMark.setAttribute('tabindex', '0');
+    
+    // Add hover event to show GTD procedure tooltip
+    gtdWarningMark.addEventListener('mouseenter', function () {
+      const gtdProcedure = localStorage.getItem('gtdProcedure') || '';
+      if (gtdProcedure.trim()) {
+        showGtdTooltipForElement(gtdWarningMark, gtdProcedure);
+      }
+    });
+    gtdWarningMark.addEventListener('mouseleave', function () {
+      hideGtdTooltip();
+    });
+    
+    li.appendChild(gtdWarningMark);
   }
   
   // Deadline indicator
@@ -4007,6 +4003,93 @@ function hideDeadlineTooltip() {
 
 window.addEventListener('scroll', hideDeadlineTooltip, true);
 window.addEventListener('blur', hideDeadlineTooltip);
+
+// --- GTD Tooltip ---
+let gtdTooltip = null;
+let gtdTooltipStylesInjected = false;
+let currentGtdTooltipTarget = null;
+
+function injectGtdTooltipStyles() {
+  if (gtdTooltipStylesInjected) return;
+  const style = document.createElement('style');
+  style.textContent = `
+.gtd-tooltip {
+  position: fixed;
+  padding: 8px 12px;
+  background: rgba(34, 34, 34, 0.95);
+  color: #fff;
+  font-size: 12px;
+  border-radius: 6px;
+  pointer-events: none;
+  z-index: 9999;
+  opacity: 0;
+  transition: opacity 120ms ease;
+  max-width: 400px;
+  word-break: break-word;
+  white-space: pre-wrap;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25);
+  line-height: 1.5;
+}
+.gtd-tooltip.visible {
+  opacity: 1;
+}
+`;
+  document.head.appendChild(style);
+  gtdTooltipStylesInjected = true;
+}
+
+function ensureGtdTooltip() {
+  if (gtdTooltip) return gtdTooltip;
+  injectGtdTooltipStyles();
+  gtdTooltip = document.createElement('div');
+  gtdTooltip.className = 'gtd-tooltip';
+  document.body.appendChild(gtdTooltip);
+  return gtdTooltip;
+}
+
+function showGtdTooltipForElement(element, text) {
+  if (!element || !text) return;
+  const tooltip = ensureGtdTooltip();
+  currentGtdTooltipTarget = element;
+  tooltip.classList.remove('visible');
+  tooltip.textContent = text;
+
+  // Position tooltip below the element, within viewport
+  tooltip.style.left = '0px';
+  tooltip.style.top = '0px';
+  const rect = element.getBoundingClientRect();
+  const tooltipRect = tooltip.getBoundingClientRect();
+  const margin = 8;
+  const viewportWidth = window.innerWidth || document.documentElement.clientWidth;
+
+  let left = rect.left + window.scrollX;
+  if (left + tooltipRect.width + margin > window.scrollX + viewportWidth) {
+    left = window.scrollX + viewportWidth - tooltipRect.width - margin;
+  }
+  if (left < window.scrollX + margin) {
+    left = window.scrollX + margin;
+  }
+  const top = rect.bottom + window.scrollY + margin;
+
+  tooltip.style.left = `${Math.max(left, margin)}px`;
+  tooltip.style.top = `${top}px`;
+
+  requestAnimationFrame(() => {
+    if (currentGtdTooltipTarget === element) {
+      tooltip.classList.add('visible');
+    }
+  });
+}
+
+function hideGtdTooltip() {
+  currentGtdTooltipTarget = null;
+  if (gtdTooltip) {
+    gtdTooltip.classList.remove('visible');
+  }
+}
+
+window.addEventListener('scroll', hideGtdTooltip, true);
+window.addEventListener('blur', hideGtdTooltip);
   
   // Delete button
   const deleteBtn = createDeleteButton(item.id);
@@ -4020,7 +4103,6 @@ window.addEventListener('blur', hideDeadlineTooltip);
 function getAriaLabel(type) {
   switch(type) {
     case 'heading': return '見出し';
-    case 'collapsible-heading': return '折りたたみ見出し';
     case 'checkbox': return 'チェックボックス';
     case 'list': return 'リスト項目';
     default: return 'テキスト';
@@ -4029,7 +4111,7 @@ function getAriaLabel(type) {
 
 // Get placeholder based on type
 function getPlaceholder() {
-  return '[/h]Header, [/b]Collapsible, [/c]Check, [/-]List, [/_]Line';
+  return '[/h]Header, [/c]Check, [/-]List, [/_]Line';
 }
 
 // Setup content event handlers
@@ -4128,11 +4210,6 @@ function convertItemFormat(item, formatType, options = {}) {
   if (!item) return;
   const { clearText = false } = options;
   const updates = { type: formatType };
-  
-  if (formatType === 'collapsible-heading') {
-    updates.collapsed = false;
-    item.collapsed = false;
-  }
   
   if (formatType === 'checkbox') {
     updates.checked = false;
