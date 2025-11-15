@@ -896,13 +896,17 @@ title.style.cssText = 'margin: 0 0 12px; font-size: 16px; text-align: center;';
   const setPasswordBtn = document.createElement('button');
   setPasswordBtn.textContent = 'パスワードを変更';
   setPasswordBtn.style.cssText = `
-    padding: 8px 16px;
+    padding: 10px 16px;
     background: #4a90e2;
-    color: white;
+    color: #fff;
     border: none;
     border-radius: 4px;
     cursor: pointer;
-    font-size: 14px;
+    font-size: 13px;
+    font-weight: 600;
+    width: 100%;
+    box-shadow: 0 2px 6px rgba(74, 144, 226, 0.25);
+    transition: background-color 0.15s ease, box-shadow 0.15s ease;
     margin-bottom: 4px;
   `;
   
@@ -981,14 +985,17 @@ title.style.cssText = 'margin: 0 0 12px; font-size: 16px; text-align: center;';
   const gtdResetBtn = document.createElement('button');
   gtdResetBtn.textContent = 'リマインド済みフラグをリセット';
   gtdResetBtn.style.cssText = `
-    padding: 8px 16px;
-    background: #4aa3ff;
-    color: white;
+    padding: 10px 16px;
+    background: #4a90e2;
+    color: #fff;
     border: none;
     border-radius: 4px;
     cursor: pointer;
     font-size: 13px;
+    font-weight: 600;
     width: 100%;
+    box-shadow: 0 2px 6px rgba(74, 144, 226, 0.25);
+    transition: background-color 0.15s ease, box-shadow 0.15s ease;
   `;
   
   const gtdResetSuccess = document.createElement('div');
