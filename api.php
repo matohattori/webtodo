@@ -299,12 +299,23 @@ switch ($action) {
     $text = trim((string)($_POST['text'] ?? ''));
     $type = (string)($_POST['type'] ?? 'text');
     $after_id = isset($_POST['after_id']) ? (int)$_POST['after_id'] : null;
+    $before_id = isset($_POST['before_id']) ? (int)$_POST['before_id'] : null;
     $allow_empty = isset($_POST['allow_empty']) && $_POST['allow_empty'] === '1';
     $deadline = isset($_POST['deadline']) ? $_POST['deadline'] : null;
     
     // Allow empty text for hr, checkbox, and list types
     if ($text !== '' || $allow_empty || in_array($type, ['hr', 'checkbox', 'list'])) {
-      if ($after_id) {
+      if ($before_id) {
+        // Insert before specific item - get its sort_order and increment it and all following items
+        $beforeOrder = $db->querySingle("SELECT sort_order FROM todos WHERE id = {$before_id}");
+        if ($beforeOrder !== null) {
+          $db->exec("UPDATE todos SET sort_order = sort_order + 1 WHERE sort_order >= {$beforeOrder}");
+          $newOrder = $beforeOrder;
+        } else {
+          $maxOrder = $db->querySingle('SELECT MAX(sort_order) FROM todos');
+          $newOrder = ($maxOrder === null) ? 0 : $maxOrder + 1;
+        }
+      } else if ($after_id) {
         // Insert after specific item - get its sort_order and increment all following items
         $afterOrder = $db->querySingle("SELECT sort_order FROM todos WHERE id = {$after_id}");
         if ($afterOrder !== null) {

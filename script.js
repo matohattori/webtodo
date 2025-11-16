@@ -2868,6 +2868,50 @@ function insertItemAfter(afterId, type = 'text', text = '', callback, options = 
   createItem(type, text, afterId, callback, options);
 }
 
+// Insert item before a specific item via API
+function insertItemBefore(beforeId, type = 'text', text = '', callback, options = {}) {
+  text = text.trim();
+  // Allow empty text for hr, checkbox, and list types
+  if (!text && !options.allowEmpty && !['hr', 'checkbox', 'list'].includes(type)) {
+    if (callback) callback();
+    return;
+  }
+  
+  // Capture state before creating
+  captureStateForUndo('create', { type, text, beforeId });
+  
+  const preparedText = prepareTextForStorage(text);
+  
+  const params = new URLSearchParams({text: preparedText, type});
+  params.append('before_id', beforeId);
+  if (options.allowEmpty) params.append('allow_empty', '1');
+  if (options.deadline !== undefined) params.append('deadline', options.deadline || '');
+
+  fetch(addUIDToURL('api.php?action=add'), {
+    method: 'POST',
+    headers: {'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8'},
+    body: params
+  })
+  .then(response => {
+    const contentType = response.headers.get('Content-Type') || '';
+    if (contentType.includes('application/json')) {
+      return response.json();
+    }
+    return null;
+  })
+  .then(data => {
+    if (options.skipReload && data) {
+      addItemFromServer(data);
+      if (typeof callback === 'function') callback(data);
+      return;
+    }
+    loadItems(() => {
+      if (typeof callback === 'function') callback(data);
+    });
+  })
+  .catch(err => console.error('Failed to create item before:', err));
+}
+
 // Reorder items based on DOM order via API
 function reorderItems(callback) {
   // Capture state before reordering
@@ -5472,6 +5516,20 @@ function handleEnter(item, li, content) {
   const tempAfter = document.createElement('div');
   tempAfter.innerHTML = sanitizedAfter;
   const afterText = tempAfter.textContent.trim();
+
+  // Special handling for heading types at the beginning of the line
+  const isHeadingType = ['heading', 'collapsible-heading', 'gtd-heading'].includes(item.type);
+  const isAtBeginning = !beforeText && afterText;
+  
+  if (isHeadingType && isAtBeginning) {
+    // For heading lines with cursor at the beginning:
+    // Insert a blank line BEFORE the current heading, keeping the heading content as-is
+    insertItemBefore(item.id, 'text', '', (data) => {
+      // After inserting blank line before, focus should remain at the beginning of the heading
+      setTimeout(() => focusItem(item.id, { position: 'start' }), 150);
+    }, { allowEmpty: true, skipReload: true });
+    return;
+  }
 
   // Check if cursor is at beginning and item has deadline
   // If so, deadline should move to the new line with the text
