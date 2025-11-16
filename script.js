@@ -507,9 +507,10 @@ function showTaskOrgReminderPopup() {
   const snoozeSelect = document.createElement('select');
   snoozeSelect.style.cssText = 'width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px; font-size: 13px;';
   snoozeSelect.innerHTML = `
-    <option value="5">5分後</option>
-    <option value="10" selected>10分後</option>
+    <option value="5" selected>5分後</option>
+    <option value="10">10分後</option>
     <option value="60">60分後</option>
+    <option value="tomorrow">明日</option>
   `;
   
   snoozeContainer.appendChild(snoozeLabel);
@@ -521,18 +522,6 @@ function showTaskOrgReminderPopup() {
   const snoozeBtn = document.createElement('button');
   snoozeBtn.textContent = '再通知';
   snoozeBtn.style.cssText = `
-    padding: 10px 16px;
-    background: #f0f0f0;
-    color: #333;
-    border: none;
-    border-radius: 4px;
-    cursor: pointer;
-    font-size: 14px;
-  `;
-  
-  const tomorrowBtn = document.createElement('button');
-  tomorrowBtn.textContent = '明日再通知';
-  tomorrowBtn.style.cssText = `
     padding: 10px 16px;
     background: #f0f0f0;
     color: #333;
@@ -555,41 +544,40 @@ function showTaskOrgReminderPopup() {
   `;
   
   snoozeBtn.onclick = () => {
-    const minutes = parseInt(snoozeSelect.value);
-    const snoozeUntil = new Date();
-    snoozeUntil.setMinutes(snoozeUntil.getMinutes() + minutes);
-    
-    saveTaskOrgReminderState({
-      snoozeUntil: snoozeUntil.toISOString(),
-      completedDate: null,
-      remindTomorrow: null
-    });
-    
-    // Set timer to show popup again
-    if (taskOrgReminderSnoozeTimer) {
-      clearTimeout(taskOrgReminderSnoozeTimer);
-    }
-    taskOrgReminderSnoozeTimer = setTimeout(() => {
-      checkTaskOrgReminder();
-    }, minutes * 60 * 1000);
-    
-    overlay.remove();
-  };
-  
-  tomorrowBtn.onclick = () => {
-    const tomorrow = new Date();
-    tomorrow.setDate(tomorrow.getDate() + 1);
-    const tomorrowString = tomorrow.toISOString().split('T')[0];
-    
-    saveTaskOrgReminderState({
-      snoozeUntil: null,
-      completedDate: null,
-      remindTomorrow: tomorrowString
-    });
-    
-    if (taskOrgReminderSnoozeTimer) {
-      clearTimeout(taskOrgReminderSnoozeTimer);
-      taskOrgReminderSnoozeTimer = null;
+    const selectedValue = snoozeSelect.value;
+    if (selectedValue === 'tomorrow') {
+      const tomorrow = new Date();
+      tomorrow.setDate(tomorrow.getDate() + 1);
+      const tomorrowString = tomorrow.toISOString().split('T')[0];
+      
+      saveTaskOrgReminderState({
+        snoozeUntil: null,
+        completedDate: null,
+        remindTomorrow: tomorrowString
+      });
+      
+      if (taskOrgReminderSnoozeTimer) {
+        clearTimeout(taskOrgReminderSnoozeTimer);
+        taskOrgReminderSnoozeTimer = null;
+      }
+    } else {
+      const minutes = parseInt(selectedValue, 10);
+      const snoozeUntil = new Date();
+      snoozeUntil.setMinutes(snoozeUntil.getMinutes() + minutes);
+      
+      saveTaskOrgReminderState({
+        snoozeUntil: snoozeUntil.toISOString(),
+        completedDate: null,
+        remindTomorrow: null
+      });
+      
+      // Set timer to show popup again
+      if (taskOrgReminderSnoozeTimer) {
+        clearTimeout(taskOrgReminderSnoozeTimer);
+      }
+      taskOrgReminderSnoozeTimer = setTimeout(() => {
+        checkTaskOrgReminder();
+      }, minutes * 60 * 1000);
     }
     
     overlay.remove();
@@ -611,7 +599,6 @@ function showTaskOrgReminderPopup() {
   };
   
   buttons.appendChild(snoozeBtn);
-  buttons.appendChild(tomorrowBtn);
   buttons.appendChild(completeBtn);
   
   dialog.appendChild(title);
@@ -964,8 +951,8 @@ function showGTDReminderPopup(headingsWithContent) {
   const snoozeSelect = document.createElement('select');
   snoozeSelect.style.cssText = 'width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px; font-size: 13px;';
   snoozeSelect.innerHTML = `
-    <option value="5">5分後</option>
-    <option value="10" selected>10分後</option>
+    <option value="5" selected>5分後</option>
+    <option value="10">10分後</option>
     <option value="60">60分後</option>
   `;
   
@@ -1377,11 +1364,8 @@ title.style.cssText = 'margin: 0 0 12px; font-size: 16px; text-align: center;';
     margin-bottom: 8px;
   `;
   
-  const error = document.createElement('div');
-  error.style.cssText = 'color: #d53f3f; font-size: 12px; margin-top: 6px; margin-bottom: 0; min-height: 16px;';
-  
-  const success = document.createElement('div');
-  success.style.cssText = 'color: #249944; font-size: 12px; margin-top: 4px; margin-bottom: 0; min-height: 16px;';
+  const passwordMessage = document.createElement('div');
+  passwordMessage.style.cssText = 'font-size: 12px; margin-top: 6px; margin-bottom: 0; min-height: 16px; color: #d53f3f;';
   
   const setPasswordBtn = document.createElement('button');
   setPasswordBtn.textContent = 'パスワードを変更';
@@ -1405,8 +1389,8 @@ title.style.cssText = 'margin: 0 0 12px; font-size: 16px; text-align: center;';
     const newPassword = newPasswordInput.value;
     
     if (!newPassword) {
-      error.textContent = '新しいパスワードを入力してください';
-      success.textContent = '';
+      passwordMessage.style.color = '#d53f3f';
+      passwordMessage.textContent = '新しいパスワードを入力してください';
       return;
     }
     
@@ -1425,18 +1409,18 @@ title.style.cssText = 'margin: 0 0 12px; font-size: 16px; text-align: center;';
       const data = await response.json();
       
       if (response.ok) {
-        error.textContent = '';
-        success.textContent = 'パスワードが設定されました';
+        passwordMessage.style.color = '#249944';
+        passwordMessage.textContent = 'パスワードが設定されました';
         currentPasswordInput.value = '';
         newPasswordInput.value = '';
       } else {
-        error.textContent = data.error || 'エラーが発生しました';
-        success.textContent = '';
+        passwordMessage.style.color = '#d53f3f';
+        passwordMessage.textContent = data.error || 'エラーが発生しました';
       }
     } catch (err) {
       console.error('Password set error:', err);
-      error.textContent = 'パスワード設定エラーが発生しました';
-      success.textContent = '';
+      passwordMessage.style.color = '#d53f3f';
+      passwordMessage.textContent = 'パスワード設定エラーが発生しました';
     }
   };
   
@@ -1446,8 +1430,7 @@ title.style.cssText = 'margin: 0 0 12px; font-size: 16px; text-align: center;';
   passwordSection.appendChild(newPasswordLabel);
   passwordSection.appendChild(newPasswordInput);
   passwordSection.appendChild(setPasswordBtn);
-  passwordSection.appendChild(error);
-  passwordSection.appendChild(success);
+  passwordSection.appendChild(passwordMessage);
   const passwordDivider = createSectionDivider();
   passwordSection.appendChild(passwordDivider);
   
@@ -1475,7 +1458,7 @@ title.style.cssText = 'margin: 0 0 12px; font-size: 16px; text-align: center;';
   gtdStatusText.textContent = `状態: ${statusMsg}`;
   
   const gtdResetBtn = document.createElement('button');
-  gtdResetBtn.textContent = 'リマインド済みフラグをリセット';
+  gtdResetBtn.textContent = 'リマインド状態をリセット';
   gtdResetBtn.style.cssText = `
     padding: 10px 16px;
     background: #4a90e2;
@@ -1632,7 +1615,7 @@ title.style.cssText = 'margin: 0 0 12px; font-size: 16px; text-align: center;';
   taskOrgProcedureLabel.style.cssText = 'display: block; font-size: 12px; margin-bottom: 3px; color: #4d5a6f;';
   
   const taskOrgProcedureTextarea = document.createElement('textarea');
-  taskOrgProcedureTextarea.placeholder = '例：\n1. 完了したタスクをアーカイブ\n2. 優先度を見直し\n3. 次週の予定を追加';
+  taskOrgProcedureTextarea.placeholder = 'タスク整理リマインド時に表示されるタスク整理手順を入力してください';
   taskOrgProcedureTextarea.style.cssText = `
     width: 100%;
     min-height: 100px;
@@ -1731,7 +1714,7 @@ title.style.cssText = 'margin: 0 0 12px; font-size: 16px; text-align: center;';
   taskOrgSection.appendChild(taskOrgResetSuccess);
   
   const actionButtons = document.createElement('div');
-  actionButtons.style.cssText = 'display: flex; justify-content: space-between; gap: 8px; margin-top: 12px; padding-top: 12px; border-top: 1px solid #e5e5e5;';
+  actionButtons.style.cssText = 'display: flex; justify-content: space-between; gap: 8px; margin-top: 12px;';
   
   const logoutBtn = document.createElement('button');
   logoutBtn.textContent = 'ログアウト';
@@ -1773,7 +1756,6 @@ title.style.cssText = 'margin: 0 0 12px; font-size: 16px; text-align: center;';
   
   actionButtons.appendChild(logoutBtn);
   actionButtons.appendChild(closeBtn);
-  gtdProcedureSection.appendChild(actionButtons);
   
   dialog.appendChild(title);
   dialog.appendChild(uidSection);
@@ -1781,6 +1763,9 @@ title.style.cssText = 'margin: 0 0 12px; font-size: 16px; text-align: center;';
   dialog.appendChild(gtdSection);
   dialog.appendChild(gtdProcedureSection);
   dialog.appendChild(taskOrgSection);
+  const footerDivider = createSectionDivider();
+  dialog.appendChild(footerDivider);
+  dialog.appendChild(actionButtons);
   overlay.appendChild(dialog);
   document.body.appendChild(overlay);
   
