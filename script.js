@@ -1020,7 +1020,7 @@ title.style.cssText = 'margin: 0 0 12px; font-size: 16px; text-align: center;';
   const setPasswordBtn = document.createElement('button');
   setPasswordBtn.textContent = 'パスワードを変更';
   setPasswordBtn.style.cssText = `
-    padding: 10px 10px;
+    padding: 10px 16px;
     background: #4a90e2;
     color: #fff;
     border: none;
@@ -1152,7 +1152,7 @@ title.style.cssText = 'margin: 0 0 12px; font-size: 16px; text-align: center;';
   gtdProcedureTitle.style.cssText = 'margin: 0 0 8px; font-size: 14px; color: #1e3a5f;';
 
   const gtdProcedureNote = document.createElement('div');
-  gtdProcedureNote.textContent = 'GTD見出しアイコンにマウスホバーすると、この内容が表示されます。';
+  gtdProcedureNote.textContent = 'GTD見出しアイコンにマウスホバーすると、この内容を表示します。';
   gtdProcedureNote.style.cssText = 'font-size: 12px; color: #6b778c; margin: -4px 0 8px;';
   
   const gtdProcedureTextarea = document.createElement('textarea');
@@ -1204,7 +1204,6 @@ title.style.cssText = 'margin: 0 0 12px; font-size: 16px; text-align: center;';
   };
   
   gtdProcedureSection.appendChild(gtdProcedureTitle);
-  gtdProcedureSection.appendChild(gtdProcedureNote);
   gtdProcedureSection.appendChild(gtdProcedureTextarea);
   gtdProcedureSection.appendChild(gtdProcedureSaveBtn);
   gtdProcedureSection.appendChild(gtdProcedureSaveSuccess);
