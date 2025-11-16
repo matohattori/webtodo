@@ -348,6 +348,336 @@ function saveGTDProcedure(procedure) {
   }
 }
 
+// Task Organization Reminder Management
+let taskOrgReminderSnoozeTimer = null;
+
+// Get task organization reminder settings from localStorage
+function getTaskOrgReminderSettings() {
+  try {
+    const settings = localStorage.getItem('taskOrgReminderSettings');
+    if (!settings) {
+      return {
+        enabled: false,
+        dayOfWeek: 0, // 0 = Sunday, 1 = Monday, etc.
+        procedure: ''
+      };
+    }
+    return JSON.parse(settings);
+  } catch (err) {
+    console.error('Failed to load task org reminder settings:', err);
+    return {
+      enabled: false,
+      dayOfWeek: 0,
+      procedure: ''
+    };
+  }
+}
+
+// Save task organization reminder settings to localStorage
+function saveTaskOrgReminderSettings(settings) {
+  try {
+    localStorage.setItem('taskOrgReminderSettings', JSON.stringify(settings));
+  } catch (err) {
+    console.error('Failed to save task org reminder settings:', err);
+  }
+}
+
+// Get task organization reminder state from localStorage
+function getTaskOrgReminderState() {
+  try {
+    const state = localStorage.getItem('taskOrgReminderState');
+    if (!state) return null;
+    return JSON.parse(state);
+  } catch (err) {
+    console.error('Failed to load task org reminder state:', err);
+    return null;
+  }
+}
+
+// Save task organization reminder state to localStorage
+function saveTaskOrgReminderState(state) {
+  try {
+    localStorage.setItem('taskOrgReminderState', JSON.stringify(state));
+  } catch (err) {
+    console.error('Failed to save task org reminder state:', err);
+  }
+}
+
+// Get the most recent target day (the last occurrence of the specified day of week)
+function getMostRecentTargetDay(dayOfWeek) {
+  const today = new Date();
+  const todayDayOfWeek = today.getDay();
+  const daysAgo = (todayDayOfWeek - dayOfWeek + 7) % 7;
+  const targetDate = new Date(today);
+  targetDate.setDate(today.getDate() - daysAgo);
+  targetDate.setHours(0, 0, 0, 0);
+  return targetDate;
+}
+
+// Check if we should show task organization reminder
+function shouldShowTaskOrgReminder() {
+  const settings = getTaskOrgReminderSettings();
+  
+  // Check if reminder is enabled
+  if (!settings.enabled) {
+    return false;
+  }
+  
+  const state = getTaskOrgReminderState();
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const todayString = getTodayString();
+  
+  // Check if snooze is active
+  if (state && state.snoozeUntil) {
+    const snoozeTime = new Date(state.snoozeUntil);
+    if (snoozeTime > new Date()) {
+      return false; // Still snoozed
+    }
+  }
+  
+  // Check if remind tomorrow flag is set for today
+  if (state && state.remindTomorrow === todayString) {
+    return true;
+  }
+  
+  // Get the most recent target day
+  const targetDay = getMostRecentTargetDay(settings.dayOfWeek);
+  
+  // Check if already completed this week
+  if (state && state.completedDate) {
+    const completedDate = new Date(state.completedDate);
+    completedDate.setHours(0, 0, 0, 0);
+    
+    // If completed on or after the most recent target day, don't show reminder
+    if (completedDate >= targetDay) {
+      return false;
+    }
+  }
+  
+  // Show reminder if today is the target day or later (and not completed)
+  return today >= targetDay;
+}
+
+// Show task organization reminder popup
+function showTaskOrgReminderPopup() {
+  const settings = getTaskOrgReminderSettings();
+  
+  const overlay = document.createElement('div');
+  overlay.className = 'task-org-reminder-overlay';
+  overlay.style.cssText = `
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.5);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 16px;
+    z-index: 10000;
+  `;
+  
+  const dialog = document.createElement('div');
+  dialog.className = 'task-org-reminder-dialog';
+  dialog.style.cssText = `
+    background: white;
+    padding: 24px;
+    border-radius: 8px;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+    max-width: 500px;
+    width: 90%;
+    max-height: 80vh;
+    overflow-y: auto;
+  `;
+  
+  const title = document.createElement('h2');
+  title.textContent = 'タスク整理 リマインド';
+  title.style.cssText = 'margin: 0 0 16px 0; font-size: 18px; color: #2a7bd6; font-weight: 600;';
+  
+  const procedureContainer = document.createElement('div');
+  procedureContainer.style.cssText = 'margin: 0 0 20px 0; padding: 12px; background: #f9f9f9; border-radius: 4px; white-space: pre-wrap; line-height: 1.6; font-size: 14px; color: #333;';
+  procedureContainer.textContent = settings.procedure || 'タスク整理を実施してください。';
+  
+  const snoozeContainer = document.createElement('div');
+  snoozeContainer.style.cssText = 'margin-bottom: 16px;';
+  
+  const snoozeLabel = document.createElement('label');
+  snoozeLabel.textContent = '再通知時間：';
+  snoozeLabel.style.cssText = 'display: block; font-size: 13px; margin-bottom: 6px; color: #555;';
+  
+  const snoozeSelect = document.createElement('select');
+  snoozeSelect.style.cssText = 'width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px; font-size: 13px;';
+  snoozeSelect.innerHTML = `
+    <option value="5" selected>5分後</option>
+    <option value="10">10分後</option>
+    <option value="60">60分後</option>
+    <option value="tomorrow">明日</option>
+  `;
+  
+  snoozeContainer.appendChild(snoozeLabel);
+  snoozeContainer.appendChild(snoozeSelect);
+  
+  const buttons = document.createElement('div');
+  buttons.style.cssText = 'display: flex; justify-content: flex-end; gap: 8px; flex-wrap: wrap;';
+  
+  const snoozeBtn = document.createElement('button');
+  snoozeBtn.textContent = '再通知';
+  snoozeBtn.style.cssText = `
+    padding: 10px 16px;
+    background: #f0f0f0;
+    color: #333;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 14px;
+  `;
+  
+  const completeBtn = document.createElement('button');
+  completeBtn.textContent = '整理完了';
+  completeBtn.style.cssText = `
+    padding: 10px 16px;
+    background: #4aa3ff;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 14px;
+  `;
+  
+  snoozeBtn.onclick = () => {
+    const selectedValue = snoozeSelect.value;
+    if (selectedValue === 'tomorrow') {
+      const tomorrow = new Date();
+      tomorrow.setDate(tomorrow.getDate() + 1);
+      const tomorrowString = tomorrow.toISOString().split('T')[0];
+      
+      saveTaskOrgReminderState({
+        snoozeUntil: null,
+        completedDate: null,
+        remindTomorrow: tomorrowString
+      });
+      
+      if (taskOrgReminderSnoozeTimer) {
+        clearTimeout(taskOrgReminderSnoozeTimer);
+        taskOrgReminderSnoozeTimer = null;
+      }
+    } else {
+      const minutes = parseInt(selectedValue, 10);
+      const snoozeUntil = new Date();
+      snoozeUntil.setMinutes(snoozeUntil.getMinutes() + minutes);
+      
+      saveTaskOrgReminderState({
+        snoozeUntil: snoozeUntil.toISOString(),
+        completedDate: null,
+        remindTomorrow: null
+      });
+      
+      // Set timer to show popup again
+      if (taskOrgReminderSnoozeTimer) {
+        clearTimeout(taskOrgReminderSnoozeTimer);
+      }
+      taskOrgReminderSnoozeTimer = setTimeout(() => {
+        checkTaskOrgReminder();
+      }, minutes * 60 * 1000);
+    }
+    
+    overlay.remove();
+  };
+  
+  completeBtn.onclick = () => {
+    saveTaskOrgReminderState({
+      completedDate: getTodayString(),
+      snoozeUntil: null,
+      remindTomorrow: null
+    });
+    
+    if (taskOrgReminderSnoozeTimer) {
+      clearTimeout(taskOrgReminderSnoozeTimer);
+      taskOrgReminderSnoozeTimer = null;
+    }
+    
+    overlay.remove();
+  };
+  
+  buttons.appendChild(snoozeBtn);
+  buttons.appendChild(completeBtn);
+  
+  dialog.appendChild(title);
+  dialog.appendChild(procedureContainer);
+  dialog.appendChild(snoozeContainer);
+  dialog.appendChild(buttons);
+  overlay.appendChild(dialog);
+  document.body.appendChild(overlay);
+  
+  // Allow closing with Escape
+  const handleEscape = (e) => {
+    if (e.key === 'Escape') {
+      completeBtn.click();
+      document.removeEventListener('keydown', handleEscape);
+    }
+  };
+  document.addEventListener('keydown', handleEscape);
+}
+
+// Check task organization reminder and show popup if needed
+function checkTaskOrgReminder() {
+  if (!shouldShowTaskOrgReminder()) {
+    return;
+  }
+  
+  showTaskOrgReminderPopup();
+}
+
+// Reset task organization reminder state (for settings)
+function resetTaskOrgReminderState() {
+  saveTaskOrgReminderState({
+    completedDate: null,
+    snoozeUntil: null,
+    remindTomorrow: null
+  });
+  
+  if (taskOrgReminderSnoozeTimer) {
+    clearTimeout(taskOrgReminderSnoozeTimer);
+    taskOrgReminderSnoozeTimer = null;
+  }
+}
+
+// Get current task organization reminder status for display
+function getTaskOrgReminderStatus() {
+  const settings = getTaskOrgReminderSettings();
+  const state = getTaskOrgReminderState();
+  
+  if (!settings.enabled) {
+    return { enabled: false, status: '無効' };
+  }
+  
+  const snoozed = state && state.snoozeUntil && new Date(state.snoozeUntil) > new Date();
+  
+  if (snoozed) {
+    const snoozeTime = new Date(state.snoozeUntil);
+    return {
+      enabled: true,
+      status: `スヌーズ中（${snoozeTime.toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' })}まで）`
+    };
+  }
+  
+  if (state && state.completedDate) {
+    const settings = getTaskOrgReminderSettings();
+    const targetDay = getMostRecentTargetDay(settings.dayOfWeek);
+    const completedDate = new Date(state.completedDate);
+    completedDate.setHours(0, 0, 0, 0);
+    
+    if (completedDate >= targetDay) {
+      return { enabled: true, status: '今週完了済み' };
+    }
+  }
+  
+  if (state && state.remindTomorrow) {
+    return { enabled: true, status: '明日再通知予定' };
+  }
+  
+  return { enabled: true, status: '未完了' };
+}
+
 // GTD Procedure Tooltip Management
 let gtdProcedureTooltip = null;
 let gtdProcedureTooltipStylesInjected = false;
@@ -621,8 +951,8 @@ function showGTDReminderPopup(headingsWithContent) {
   const snoozeSelect = document.createElement('select');
   snoozeSelect.style.cssText = 'width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px; font-size: 13px;';
   snoozeSelect.innerHTML = `
-    <option value="5">5分後</option>
-    <option value="10" selected>10分後</option>
+    <option value="5" selected>5分後</option>
+    <option value="10">10分後</option>
     <option value="60">60分後</option>
   `;
   
@@ -790,6 +1120,29 @@ function initializeApp() {
   setTimeout(() => {
     checkGTDReminders();
   }, 1000);
+  
+  // Restore task organization snooze timer if there's an active snooze
+  const taskOrgState = getTaskOrgReminderState();
+  if (taskOrgState && taskOrgState.snoozeUntil) {
+    const snoozeTime = new Date(taskOrgState.snoozeUntil);
+    const now = new Date();
+    const remainingMs = snoozeTime - now;
+    
+    if (remainingMs > 0) {
+      // Snooze is still active, set timer for remaining time
+      if (taskOrgReminderSnoozeTimer) {
+        clearTimeout(taskOrgReminderSnoozeTimer);
+      }
+      taskOrgReminderSnoozeTimer = setTimeout(() => {
+        checkTaskOrgReminder();
+      }, remainingMs);
+    }
+  }
+  
+  // Check task organization reminder after a short delay
+  setTimeout(() => {
+    checkTaskOrgReminder();
+  }, 1500);
 }
 
 // Show password prompt dialog
@@ -1011,11 +1364,8 @@ title.style.cssText = 'margin: 0 0 12px; font-size: 16px; text-align: center;';
     margin-bottom: 8px;
   `;
   
-  const error = document.createElement('div');
-  error.style.cssText = 'color: #d53f3f; font-size: 12px; margin-top: 6px; margin-bottom: 0; min-height: 16px;';
-  
-  const success = document.createElement('div');
-  success.style.cssText = 'color: #249944; font-size: 12px; margin-top: 4px; margin-bottom: 0; min-height: 16px;';
+  const passwordMessage = document.createElement('div');
+  passwordMessage.style.cssText = 'font-size: 12px; margin-top: 6px; margin-bottom: 0; min-height: 16px; color: #d53f3f;';
   
   const setPasswordBtn = document.createElement('button');
   setPasswordBtn.textContent = 'パスワードを変更';
@@ -1039,8 +1389,8 @@ title.style.cssText = 'margin: 0 0 12px; font-size: 16px; text-align: center;';
     const newPassword = newPasswordInput.value;
     
     if (!newPassword) {
-      error.textContent = '新しいパスワードを入力してください';
-      success.textContent = '';
+      passwordMessage.style.color = '#d53f3f';
+      passwordMessage.textContent = '新しいパスワードを入力してください';
       return;
     }
     
@@ -1059,18 +1409,18 @@ title.style.cssText = 'margin: 0 0 12px; font-size: 16px; text-align: center;';
       const data = await response.json();
       
       if (response.ok) {
-        error.textContent = '';
-        success.textContent = 'パスワードが設定されました';
+        passwordMessage.style.color = '#249944';
+        passwordMessage.textContent = 'パスワードが設定されました';
         currentPasswordInput.value = '';
         newPasswordInput.value = '';
       } else {
-        error.textContent = data.error || 'エラーが発生しました';
-        success.textContent = '';
+        passwordMessage.style.color = '#d53f3f';
+        passwordMessage.textContent = data.error || 'エラーが発生しました';
       }
     } catch (err) {
       console.error('Password set error:', err);
-      error.textContent = 'パスワード設定エラーが発生しました';
-      success.textContent = '';
+      passwordMessage.style.color = '#d53f3f';
+      passwordMessage.textContent = 'パスワード設定エラーが発生しました';
     }
   };
   
@@ -1080,8 +1430,7 @@ title.style.cssText = 'margin: 0 0 12px; font-size: 16px; text-align: center;';
   passwordSection.appendChild(newPasswordLabel);
   passwordSection.appendChild(newPasswordInput);
   passwordSection.appendChild(setPasswordBtn);
-  passwordSection.appendChild(error);
-  passwordSection.appendChild(success);
+  passwordSection.appendChild(passwordMessage);
   const passwordDivider = createSectionDivider();
   passwordSection.appendChild(passwordDivider);
   
@@ -1109,7 +1458,7 @@ title.style.cssText = 'margin: 0 0 12px; font-size: 16px; text-align: center;';
   gtdStatusText.textContent = `状態: ${statusMsg}`;
   
   const gtdResetBtn = document.createElement('button');
-  gtdResetBtn.textContent = 'リマインド済みフラグをリセット';
+  gtdResetBtn.textContent = 'リマインド状態をリセット';
   gtdResetBtn.style.cssText = `
     padding: 10px 16px;
     background: #4a90e2;
@@ -1204,12 +1553,168 @@ title.style.cssText = 'margin: 0 0 12px; font-size: 16px; text-align: center;';
   };
   
   gtdProcedureSection.appendChild(gtdProcedureTitle);
+  gtdProcedureSection.appendChild(gtdProcedureNote);
   gtdProcedureSection.appendChild(gtdProcedureTextarea);
   gtdProcedureSection.appendChild(gtdProcedureSaveBtn);
   gtdProcedureSection.appendChild(gtdProcedureSaveSuccess);
+  const gtdProcedureDivider = createSectionDivider();
+  gtdProcedureSection.appendChild(gtdProcedureDivider);
+  
+  // Task Organization Reminder Section
+  const taskOrgSection = document.createElement('div');
+  taskOrgSection.style.cssText = 'margin-bottom: 12px;';
+  
+  const taskOrgTitle = document.createElement('h3');
+  taskOrgTitle.textContent = 'タスク整理リマインド';
+  taskOrgTitle.style.cssText = 'margin: 0 0 8px; font-size: 14px; color: #1e3a5f;';
+  
+  const taskOrgDescription = document.createElement('div');
+  taskOrgDescription.textContent = '指定した曜日にアプリ起動時にタスク整理を促します。整理手順を自由に書いておくと、毎週同じ流れで見直しができます。';
+  taskOrgDescription.style.cssText = 'font-size: 12px; color: #6b778c; margin: -4px 0 12px; line-height: 1.5;';
+  
+  const taskOrgSettings = getTaskOrgReminderSettings();
+  
+  // Enable/Disable toggle
+  const taskOrgEnableContainer = document.createElement('div');
+  taskOrgEnableContainer.style.cssText = 'margin-bottom: 12px; display: flex; align-items: center; gap: 8px;';
+  
+  const taskOrgEnableCheckbox = document.createElement('input');
+  taskOrgEnableCheckbox.type = 'checkbox';
+  taskOrgEnableCheckbox.id = 'taskOrgEnableCheckbox';
+  taskOrgEnableCheckbox.checked = taskOrgSettings.enabled;
+  
+  const taskOrgEnableLabel = document.createElement('label');
+  taskOrgEnableLabel.htmlFor = 'taskOrgEnableCheckbox';
+  taskOrgEnableLabel.textContent = 'リマインドを有効にする';
+  taskOrgEnableLabel.style.cssText = 'font-size: 13px; color: #1e3a5f; cursor: pointer;';
+  
+  taskOrgEnableContainer.appendChild(taskOrgEnableCheckbox);
+  taskOrgEnableContainer.appendChild(taskOrgEnableLabel);
+  
+  // Day of week selector
+  const taskOrgDayLabel = document.createElement('label');
+  taskOrgDayLabel.textContent = 'リマインド曜日';
+  taskOrgDayLabel.style.cssText = 'display: block; font-size: 12px; margin-bottom: 3px; color: #4d5a6f;';
+  
+  const taskOrgDaySelect = document.createElement('select');
+  taskOrgDaySelect.style.cssText = 'width: 100%; padding: 8px 12px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px; box-sizing: border-box; margin-bottom: 12px;';
+  taskOrgDaySelect.innerHTML = `
+    <option value="0">日曜日</option>
+    <option value="1">月曜日</option>
+    <option value="2">火曜日</option>
+    <option value="3">水曜日</option>
+    <option value="4">木曜日</option>
+    <option value="5">金曜日</option>
+    <option value="6">土曜日</option>
+  `;
+  taskOrgDaySelect.value = taskOrgSettings.dayOfWeek.toString();
+  
+  // Procedure text
+  const taskOrgProcedureLabel = document.createElement('label');
+  taskOrgProcedureLabel.textContent = 'タスク整理手順';
+  taskOrgProcedureLabel.style.cssText = 'display: block; font-size: 12px; margin-bottom: 3px; color: #4d5a6f;';
+  
+  const taskOrgProcedureTextarea = document.createElement('textarea');
+  taskOrgProcedureTextarea.placeholder = 'タスク整理リマインド時に表示されるタスク整理手順を入力してください';
+  taskOrgProcedureTextarea.style.cssText = `
+    width: 100%;
+    min-height: 100px;
+    padding: 8px 12px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    font-size: 13px;
+    font-family: inherit;
+    box-sizing: border-box;
+    margin-bottom: 12px;
+    resize: vertical;
+    line-height: 1.5;
+  `;
+  taskOrgProcedureTextarea.value = taskOrgSettings.procedure || '';
+  
+  // Save button
+  const taskOrgSaveBtn = document.createElement('button');
+  taskOrgSaveBtn.textContent = '保存';
+  taskOrgSaveBtn.style.cssText = `
+    padding: 10px 16px;
+    background: #4a90e2;
+    color: #fff;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: 600;
+    width: 100%;
+    box-shadow: 0 2px 6px rgba(74, 144, 226, 0.25);
+    transition: background-color 0.15s ease, box-shadow 0.15s ease;
+    margin-bottom: 8px;
+  `;
+  
+  const taskOrgSaveSuccess = document.createElement('div');
+  taskOrgSaveSuccess.style.cssText = 'color: #249944; font-size: 12px; margin-top: 6px; margin-bottom: 8px; min-height: 16px;';
+  
+  taskOrgSaveBtn.onclick = () => {
+    const settings = {
+      enabled: taskOrgEnableCheckbox.checked,
+      dayOfWeek: parseInt(taskOrgDaySelect.value),
+      procedure: taskOrgProcedureTextarea.value
+    };
+    saveTaskOrgReminderSettings(settings);
+    taskOrgSaveSuccess.textContent = '保存しました';
+    setTimeout(() => {
+      taskOrgSaveSuccess.textContent = '';
+    }, 3000);
+  };
+  
+  // Status display
+  const taskOrgStatus = getTaskOrgReminderStatus();
+  const taskOrgStatusText = document.createElement('div');
+  taskOrgStatusText.style.cssText = 'font-size: 13px; color: #666; margin-bottom: 8px; padding: 8px; background: #f9f9f9; border-radius: 4px;';
+  taskOrgStatusText.textContent = `状態: ${taskOrgStatus.status}`;
+  
+  // Reset button
+  const taskOrgResetBtn = document.createElement('button');
+  taskOrgResetBtn.textContent = 'リマインド状態をリセット';
+  taskOrgResetBtn.style.cssText = `
+    padding: 10px 16px;
+    background: #4a90e2;
+    color: #fff;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: 600;
+    width: 100%;
+    box-shadow: 0 2px 6px rgba(74, 144, 226, 0.25);
+    transition: background-color 0.15s ease, box-shadow 0.15s ease;
+  `;
+  
+  const taskOrgResetSuccess = document.createElement('div');
+  taskOrgResetSuccess.style.cssText = 'color: #249944; font-size: 12px; margin-top: 6px; min-height: 16px;';
+  
+  taskOrgResetBtn.onclick = () => {
+    resetTaskOrgReminderState();
+    taskOrgResetSuccess.textContent = 'リセットしました。次回アクセス時に再チェックされます。';
+    taskOrgStatusText.textContent = '状態: 未完了';
+    setTimeout(() => {
+      taskOrgResetSuccess.textContent = '';
+    }, 3000);
+  };
+  
+  taskOrgSection.appendChild(taskOrgTitle);
+  taskOrgSection.appendChild(taskOrgDescription);
+  taskOrgSection.appendChild(taskOrgEnableContainer);
+  taskOrgSection.appendChild(taskOrgDayLabel);
+  taskOrgSection.appendChild(taskOrgDaySelect);
+  taskOrgSection.appendChild(taskOrgProcedureLabel);
+  taskOrgSection.appendChild(taskOrgProcedureTextarea);
+  taskOrgSection.appendChild(taskOrgSaveBtn);
+  taskOrgSection.appendChild(taskOrgSaveSuccess);
+  taskOrgSection.appendChild(taskOrgStatusText);
+  taskOrgSection.appendChild(taskOrgResetBtn);
+  taskOrgSection.appendChild(taskOrgResetSuccess);
   
   const actionButtons = document.createElement('div');
-  actionButtons.style.cssText = 'display: flex; justify-content: space-between; gap: 8px; margin-top: 12px; padding-top: 12px; border-top: 1px solid #e5e5e5;';
+  actionButtons.style.cssText = 'display: flex; justify-content: space-between; gap: 8px; margin-top: 12px;';
   
   const logoutBtn = document.createElement('button');
   logoutBtn.textContent = 'ログアウト';
@@ -1251,13 +1756,16 @@ title.style.cssText = 'margin: 0 0 12px; font-size: 16px; text-align: center;';
   
   actionButtons.appendChild(logoutBtn);
   actionButtons.appendChild(closeBtn);
-  gtdProcedureSection.appendChild(actionButtons);
   
   dialog.appendChild(title);
   dialog.appendChild(uidSection);
   dialog.appendChild(passwordSection);
   dialog.appendChild(gtdSection);
   dialog.appendChild(gtdProcedureSection);
+  dialog.appendChild(taskOrgSection);
+  const footerDivider = createSectionDivider();
+  dialog.appendChild(footerDivider);
+  dialog.appendChild(actionButtons);
   overlay.appendChild(dialog);
   document.body.appendChild(overlay);
   
