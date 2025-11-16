@@ -645,7 +645,7 @@ function showGTDReminderPopup(headingsWithContent) {
   `;
   
   const okBtn = document.createElement('button');
-  okBtn.textContent = 'OK（今日はもう大丈夫）';
+  okBtn.textContent = '今日はもう表示しない';
   okBtn.style.cssText = `
     padding: 10px 16px;
     background: #4aa3ff;
@@ -963,9 +963,15 @@ title.style.cssText = 'margin: 0 0 12px; font-size: 16px; text-align: center;';
   uidSection.appendChild(uidLabel);
   uidSection.appendChild(uidValue);
   
+  const createSectionDivider = () => {
+    const divider = document.createElement('div');
+    divider.style.cssText = 'height: 1px; background: #e5e5e5; margin: 12px 0;';
+    return divider;
+  };
+  
   
   const passwordSection = document.createElement('div');
-  passwordSection.style.cssText = 'margin-bottom: 8px;';
+  passwordSection.style.cssText = 'margin-bottom: 4px;';
   
   const passwordTitle = document.createElement('h3');
   passwordTitle.textContent = 'パスワード変更';
@@ -1002,19 +1008,19 @@ title.style.cssText = 'margin: 0 0 12px; font-size: 16px; text-align: center;';
     border-radius: 4px;
     font-size: 14px;
     box-sizing: border-box;
-    margin-bottom: 2px;
+    margin-bottom: 8px;
   `;
   
   const error = document.createElement('div');
-  error.style.cssText = 'color: #d53f3f; font-size: 12px; margin-bottom: 6px; min-height: 16px;';
+  error.style.cssText = 'color: #d53f3f; font-size: 12px; margin-top: 6px; margin-bottom: 0; min-height: 16px;';
   
   const success = document.createElement('div');
-  success.style.cssText = 'color: #249944; font-size: 12px; margin-bottom: 6px; min-height: 16px;';
+  success.style.cssText = 'color: #249944; font-size: 12px; margin-top: 4px; margin-bottom: 0; min-height: 16px;';
   
   const setPasswordBtn = document.createElement('button');
   setPasswordBtn.textContent = 'パスワードを変更';
   setPasswordBtn.style.cssText = `
-    padding: 10px 16px;
+    padding: 10px 10px;
     background: #4a90e2;
     color: #fff;
     border: none;
@@ -1073,13 +1079,15 @@ title.style.cssText = 'margin: 0 0 12px; font-size: 16px; text-align: center;';
   passwordSection.appendChild(currentPasswordInput);
   passwordSection.appendChild(newPasswordLabel);
   passwordSection.appendChild(newPasswordInput);
+  passwordSection.appendChild(setPasswordBtn);
   passwordSection.appendChild(error);
   passwordSection.appendChild(success);
-  passwordSection.appendChild(setPasswordBtn);
+  const passwordDivider = createSectionDivider();
+  passwordSection.appendChild(passwordDivider);
   
   // GTD Reminder Section
   const gtdSection = document.createElement('div');
-  gtdSection.style.cssText = 'margin-bottom: 8px; margin-top: 12px; padding-top: 12px; border-top: 1px solid #e5e5e5;';
+  gtdSection.style.cssText = 'margin-bottom: 12px;';
   
   const gtdTitle = document.createElement('h3');
   gtdTitle.textContent = 'GTD見出しリマインド';
@@ -1132,14 +1140,20 @@ title.style.cssText = 'margin: 0 0 12px; font-size: 16px; text-align: center;';
   gtdSection.appendChild(gtdStatusText);
   gtdSection.appendChild(gtdResetBtn);
   gtdSection.appendChild(gtdResetSuccess);
+  const gtdDivider = createSectionDivider();
+  gtdSection.appendChild(gtdDivider);
   
   // GTD Processing Procedure Section
   const gtdProcedureSection = document.createElement('div');
-  gtdProcedureSection.style.cssText = 'margin-bottom: 8px; margin-top: 12px; padding-top: 12px; border-top: 1px solid #e5e5e5;';
+  gtdProcedureSection.style.cssText = 'margin-bottom: 12px;';
   
   const gtdProcedureTitle = document.createElement('h3');
   gtdProcedureTitle.textContent = 'GTD処理手順';
   gtdProcedureTitle.style.cssText = 'margin: 0 0 8px; font-size: 14px; color: #1e3a5f;';
+
+  const gtdProcedureNote = document.createElement('div');
+  gtdProcedureNote.textContent = 'GTD見出しアイコンにマウスホバーすると、この内容が表示されます。';
+  gtdProcedureNote.style.cssText = 'font-size: 12px; color: #6b778c; margin: -4px 0 8px;';
   
   const gtdProcedureTextarea = document.createElement('textarea');
   gtdProcedureTextarea.placeholder = 'GTD見出しのアイコンをホバーした際に表示される処理手順を入力してください';
@@ -1190,12 +1204,13 @@ title.style.cssText = 'margin: 0 0 12px; font-size: 16px; text-align: center;';
   };
   
   gtdProcedureSection.appendChild(gtdProcedureTitle);
+  gtdProcedureSection.appendChild(gtdProcedureNote);
   gtdProcedureSection.appendChild(gtdProcedureTextarea);
   gtdProcedureSection.appendChild(gtdProcedureSaveBtn);
   gtdProcedureSection.appendChild(gtdProcedureSaveSuccess);
   
-  const buttons = document.createElement('div');
-  buttons.style.cssText = 'display: flex; justify-content: space-between; gap: 8px; margin-top: 8px;';
+  const actionButtons = document.createElement('div');
+  actionButtons.style.cssText = 'display: flex; justify-content: space-between; gap: 8px; margin-top: 12px; padding-top: 12px; border-top: 1px solid #e5e5e5;';
   
   const logoutBtn = document.createElement('button');
   logoutBtn.textContent = 'ログアウト';
@@ -1235,15 +1250,15 @@ title.style.cssText = 'margin: 0 0 12px; font-size: 16px; text-align: center;';
     overlay.remove();
   };
   
-  buttons.appendChild(logoutBtn);
-  buttons.appendChild(closeBtn);
+  actionButtons.appendChild(logoutBtn);
+  actionButtons.appendChild(closeBtn);
+  gtdProcedureSection.appendChild(actionButtons);
   
   dialog.appendChild(title);
   dialog.appendChild(uidSection);
   dialog.appendChild(passwordSection);
   dialog.appendChild(gtdSection);
   dialog.appendChild(gtdProcedureSection);
-  dialog.appendChild(buttons);
   overlay.appendChild(dialog);
   document.body.appendChild(overlay);
   
