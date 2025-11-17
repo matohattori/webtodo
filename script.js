@@ -1100,6 +1100,8 @@ function initializeApp() {
   
   // Restore snooze timer if there's an active snooze
   const state = getGTDReminderState();
+  let hasActiveGTDSnooze = false;
+  
   if (state && state.snoozeUntil) {
     const snoozeTime = new Date(state.snoozeUntil);
     const now = new Date();
@@ -1107,6 +1109,7 @@ function initializeApp() {
     
     if (remainingMs > 0) {
       // Snooze is still active, set timer for remaining time
+      hasActiveGTDSnooze = true;
       if (gtdReminderSnoozeTimer) {
         clearTimeout(gtdReminderSnoozeTimer);
       }
@@ -1117,12 +1120,17 @@ function initializeApp() {
   }
   
   // Check GTD reminders after a short delay to ensure items are loaded
-  setTimeout(() => {
-    checkGTDReminders();
-  }, 1000);
+  // BUT only if there's no active snooze
+  if (!hasActiveGTDSnooze) {
+    setTimeout(() => {
+      checkGTDReminders();
+    }, 1000);
+  }
   
   // Restore task organization snooze timer if there's an active snooze
   const taskOrgState = getTaskOrgReminderState();
+  let hasActiveTaskOrgSnooze = false;
+  
   if (taskOrgState && taskOrgState.snoozeUntil) {
     const snoozeTime = new Date(taskOrgState.snoozeUntil);
     const now = new Date();
@@ -1130,6 +1138,7 @@ function initializeApp() {
     
     if (remainingMs > 0) {
       // Snooze is still active, set timer for remaining time
+      hasActiveTaskOrgSnooze = true;
       if (taskOrgReminderSnoozeTimer) {
         clearTimeout(taskOrgReminderSnoozeTimer);
       }
@@ -1140,9 +1149,12 @@ function initializeApp() {
   }
   
   // Check task organization reminder after a short delay
-  setTimeout(() => {
-    checkTaskOrgReminder();
-  }, 1500);
+  // BUT only if there's no active snooze
+  if (!hasActiveTaskOrgSnooze) {
+    setTimeout(() => {
+      checkTaskOrgReminder();
+    }, 1500);
+  }
 }
 
 // Show password prompt dialog
