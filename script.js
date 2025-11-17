@@ -436,9 +436,17 @@ function shouldShowTaskOrgReminder() {
     }
   }
   
-  // Check if remind tomorrow flag is set for today
-  if (state && state.remindTomorrow === todayString) {
-    return true;
+  // Check if remind tomorrow flag is set
+  if (state && state.remindTomorrow) {
+    // If remindTomorrow is today, show the reminder
+    if (state.remindTomorrow === todayString) {
+      return true;
+    }
+    // If remindTomorrow is in the future, don't show reminder yet
+    if (state.remindTomorrow > todayString) {
+      return false;
+    }
+    // If remindTomorrow is in the past, clear it and continue with normal logic
   }
   
   // Get the most recent target day
@@ -1100,6 +1108,8 @@ function initializeApp() {
   
   // Restore snooze timer if there's an active snooze
   const state = getGTDReminderState();
+  let hasActiveGTDSnooze = false;
+  
   if (state && state.snoozeUntil) {
     const snoozeTime = new Date(state.snoozeUntil);
     const now = new Date();
@@ -1107,6 +1117,7 @@ function initializeApp() {
     
     if (remainingMs > 0) {
       // Snooze is still active, set timer for remaining time
+      hasActiveGTDSnooze = true;
       if (gtdReminderSnoozeTimer) {
         clearTimeout(gtdReminderSnoozeTimer);
       }
@@ -1117,12 +1128,17 @@ function initializeApp() {
   }
   
   // Check GTD reminders after a short delay to ensure items are loaded
-  setTimeout(() => {
-    checkGTDReminders();
-  }, 1000);
+  // BUT only if there's no active snooze
+  if (!hasActiveGTDSnooze) {
+    setTimeout(() => {
+      checkGTDReminders();
+    }, 1000);
+  }
   
   // Restore task organization snooze timer if there's an active snooze
   const taskOrgState = getTaskOrgReminderState();
+  let hasActiveTaskOrgSnooze = false;
+  
   if (taskOrgState && taskOrgState.snoozeUntil) {
     const snoozeTime = new Date(taskOrgState.snoozeUntil);
     const now = new Date();
@@ -1130,6 +1146,7 @@ function initializeApp() {
     
     if (remainingMs > 0) {
       // Snooze is still active, set timer for remaining time
+      hasActiveTaskOrgSnooze = true;
       if (taskOrgReminderSnoozeTimer) {
         clearTimeout(taskOrgReminderSnoozeTimer);
       }
@@ -1140,9 +1157,12 @@ function initializeApp() {
   }
   
   // Check task organization reminder after a short delay
-  setTimeout(() => {
-    checkTaskOrgReminder();
-  }, 1500);
+  // BUT only if there's no active snooze
+  if (!hasActiveTaskOrgSnooze) {
+    setTimeout(() => {
+      checkTaskOrgReminder();
+    }, 1500);
+  }
 }
 
 // Show password prompt dialog
