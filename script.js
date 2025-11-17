@@ -436,9 +436,17 @@ function shouldShowTaskOrgReminder() {
     }
   }
   
-  // Check if remind tomorrow flag is set for today
-  if (state && state.remindTomorrow === todayString) {
-    return true;
+  // Check if remind tomorrow flag is set
+  if (state && state.remindTomorrow) {
+    // If remindTomorrow is today, show the reminder
+    if (state.remindTomorrow === todayString) {
+      return true;
+    }
+    // If remindTomorrow is in the future, don't show reminder yet
+    if (state.remindTomorrow > todayString) {
+      return false;
+    }
+    // If remindTomorrow is in the past, clear it and continue with normal logic
   }
   
   // Get the most recent target day
