@@ -17,6 +17,38 @@ function addUIDToURL(url) {
 // Authentication management
 let authDialogShown = false;
 
+// Cookie management for remember me feature
+function setRememberCookie(uid, token, days = 30) {
+  const expires = new Date();
+  expires.setTime(expires.getTime() + days * 24 * 60 * 60 * 1000);
+  const cookieValue = JSON.stringify({ uid, token });
+  document.cookie = `webtodo_remember=${encodeURIComponent(cookieValue)};expires=${expires.toUTCString()};path=/;SameSite=Strict${window.location.protocol === 'https:' ? ';Secure' : ''}`;
+}
+
+function getRememberCookie() {
+  const name = 'webtodo_remember=';
+  const decodedCookie = decodeURIComponent(document.cookie);
+  const ca = decodedCookie.split(';');
+  for (let i = 0; i < ca.length; i++) {
+    let c = ca[i];
+    while (c.charAt(0) === ' ') {
+      c = c.substring(1);
+    }
+    if (c.indexOf(name) === 0) {
+      try {
+        return JSON.parse(c.substring(name.length, c.length));
+      } catch (e) {
+        return null;
+      }
+    }
+  }
+  return null;
+}
+
+function clearRememberCookie() {
+  document.cookie = 'webtodo_remember=;expires=Thu, 01 Jan 1970 00:00:00 UTC;path=/;SameSite=Strict';
+}
+
 // Show login screen
 function showLoginScreen() {
   const overlay = document.createElement('div');
@@ -87,6 +119,25 @@ function showLoginScreen() {
   const info = document.createElement('div');
   info.textContent = '※初めてのIDの場合、パスワードを設定して新規登録します';
   info.style.cssText = 'color: #666; font-size: 12px; margin-bottom: 16px;';
+  
+  const rememberCheckbox = document.createElement('input');
+  rememberCheckbox.type = 'checkbox';
+  rememberCheckbox.id = 'rememberMe';
+  rememberCheckbox.style.cssText = 'margin-right: 6px;';
+  
+  const rememberLabel = document.createElement('label');
+  rememberLabel.htmlFor = 'rememberMe';
+  rememberLabel.textContent = 'ユーザー名・パスワードを記憶する';
+  rememberLabel.style.cssText = 'font-size: 13px; color: #555; cursor: pointer;';
+  
+  const rememberContainer = document.createElement('div');
+  rememberContainer.style.cssText = 'margin-bottom: 12px; display: flex; align-items: center;';
+  rememberContainer.appendChild(rememberCheckbox);
+  rememberContainer.appendChild(rememberLabel);
+  
+  const rememberNote = document.createElement('div');
+  rememberNote.textContent = '※次回以降、自動でログイン情報が入力されます（この端末のみ）';
+  rememberNote.style.cssText = 'color: #888; font-size: 11px; margin-bottom: 16px; line-height: 1.4;';
   
   const loginBtn = document.createElement('button');
   const loginButtonDefaultText = 'ログイン / 新規登録';
@@ -253,7 +304,10 @@ function showLoginScreen() {
       const loginResponse = await fetch(`api.php?action=login&uid=${encodeURIComponent(id)}`, {
         method: 'POST',
         headers: {'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8'},
-        body: new URLSearchParams({ password })
+        body: new URLSearchParams({ 
+          password,
+          remember: rememberCheckbox.checked ? '1' : '0'
+        })
       });
       
       const data = await loginResponse.json();
@@ -262,6 +316,19 @@ function showLoginScreen() {
         // Login successful
         userID = id;
         isLoggedIn = true;
+        
+        // Handle remember me
+        if (rememberCheckbox.checked) {
+          // Save remember token
+          const token = data.remember_token || '';
+          if (token) {
+            setRememberCookie(id, token);
+          }
+        } else {
+          // Clear any existing remember cookie
+          clearRememberCookie();
+        }
+        
         overlay.remove();
         initializeApp();
       } else {
@@ -299,11 +366,26 @@ function showLoginScreen() {
   dialog.appendChild(passwordInput);
   dialog.appendChild(error);
   dialog.appendChild(info);
+  dialog.appendChild(rememberContainer);
+  dialog.appendChild(rememberNote);
   dialog.appendChild(loginBtn);
   overlay.appendChild(dialog);
   document.body.appendChild(overlay);
   
-  setTimeout(() => idInput.focus(), 100);
+  // Try to auto-fill from remember cookie
+  const rememberedCreds = getRememberCookie();
+  if (rememberedCreds) {
+    idInput.value = rememberedCreds.uid;
+    rememberCheckbox.checked = true;
+  }
+  
+  setTimeout(() => {
+    if (idInput.value) {
+      passwordInput.focus();
+    } else {
+      idInput.focus();
+    }
+  }, 100);
 }
 
 // Fetch whether the provided UID already has a password set
@@ -1884,10 +1966,13 @@ title.style.cssText = 'margin: 0 0 12px; font-size: 16px; text-align: center;';
   
   logoutBtn.onclick = async () => {
     try {
+      // Clear remember cookie
+      clearRememberCookie();
       await fetch('api.php?action=logout', { method: 'POST' });
       window.location.reload();
     } catch (err) {
       console.error('Logout error:', err);
+      clearRememberCookie();
       window.location.reload();
     }
   };
@@ -6129,25 +6214,56 @@ function handleDrop(e) {
 }
 
 // Initialize
-window.addEventListener('load', () => {
-  // Check if user is logged in
-  fetch('api.php?action=check_session')
-    .then(r => r.json())
-    .then(data => {
-      if (data.logged_in && data.uid) {
-        // User is already logged in
-        userID = data.uid;
-        isLoggedIn = true;
-        initializeApp();
-      } else {
-        // Show login screen
-        showLoginScreen();
+window.addEventListener('load', async () => {
+  try {
+    // Check if user is logged in via session
+    const sessionResponse = await fetch('api.php?action=check_session');
+    const sessionData = await sessionResponse.json();
+    
+    if (sessionData.logged_in && sessionData.uid) {
+      // User is already logged in via session
+      userID = sessionData.uid;
+      isLoggedIn = true;
+      initializeApp();
+      return;
+    }
+    
+    // Check for remember me cookie
+    const rememberedCreds = getRememberCookie();
+    if (rememberedCreds && rememberedCreds.uid && rememberedCreds.token) {
+      // Try to auto-login with token
+      try {
+        const tokenResponse = await fetch(`api.php?action=token_login&uid=${encodeURIComponent(rememberedCreds.uid)}`, {
+          method: 'POST',
+          headers: {'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8'},
+          body: new URLSearchParams({ token: rememberedCreds.token })
+        });
+        
+        const tokenData = await tokenResponse.json();
+        
+        if (tokenResponse.ok && tokenData.success) {
+          // Auto-login successful
+          userID = rememberedCreds.uid;
+          isLoggedIn = true;
+          initializeApp();
+          return;
+        } else {
+          // Token is invalid or expired, clear cookie
+          clearRememberCookie();
+        }
+      } catch (tokenError) {
+        console.warn('Token login failed:', tokenError);
+        clearRememberCookie();
       }
-    })
-    .catch(() => {
-      // Error checking session, show login screen
-      showLoginScreen();
-    });
+    }
+    
+    // Show login screen
+    showLoginScreen();
+  } catch (err) {
+    console.error('Initialization error:', err);
+    // Error checking session, show login screen
+    showLoginScreen();
+  }
   
   // Setup reorder toggle button
   const toggleBtn = document.getElementById('reorderToggle');

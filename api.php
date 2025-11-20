@@ -43,6 +43,16 @@ function initializeDatabase($db): void {
     pass_hash TEXT
   )');
   
+  // Create remember_tokens table for remember me feature
+  $db->exec('CREATE TABLE IF NOT EXISTS remember_tokens (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    uid TEXT NOT NULL,
+    token TEXT NOT NULL,
+    created_at INTEGER NOT NULL,
+    expires_at INTEGER NOT NULL,
+    UNIQUE(uid, token)
+  )');
+  
   // Add new columns if they don't exist (migration)
   $result = $db->query("PRAGMA table_info(todos)");
   $columns = [];
@@ -100,6 +110,64 @@ function verifyPassword($db, $uid, $password): bool {
 // Check if user is authenticated for this UID
 function isAuthenticated($uid): bool {
   return isset($_SESSION['auth_' . $uid]) && $_SESSION['auth_' . $uid] === true;
+}
+
+// Generate a secure random token
+function generateRememberToken(): string {
+  return bin2hex(random_bytes(32));
+}
+
+// Save remember token to database
+function saveRememberToken($db, $uid, $token, $days = 30): void {
+  $createdAt = time();
+  $expiresAt = $createdAt + ($days * 24 * 60 * 60);
+  
+  $stmt = $db->prepare('INSERT INTO remember_tokens (uid, token, created_at, expires_at) VALUES (:uid, :token, :created_at, :expires_at)');
+  $stmt->bindValue(':uid', $uid, SQLITE3_TEXT);
+  $stmt->bindValue(':token', $token, SQLITE3_TEXT);
+  $stmt->bindValue(':created_at', $createdAt, SQLITE3_INTEGER);
+  $stmt->bindValue(':expires_at', $expiresAt, SQLITE3_INTEGER);
+  $stmt->execute();
+}
+
+// Verify remember token
+function verifyRememberToken($db, $uid, $token): bool {
+  $stmt = $db->prepare('SELECT expires_at FROM remember_tokens WHERE uid = :uid AND token = :token');
+  $stmt->bindValue(':uid', $uid, SQLITE3_TEXT);
+  $stmt->bindValue(':token', $token, SQLITE3_TEXT);
+  $result = $stmt->execute();
+  $row = $result->fetchArray(SQLITE3_ASSOC);
+  
+  if ($row === false) {
+    return false;
+  }
+  
+  // Check if token has expired
+  if ($row['expires_at'] < time()) {
+    // Token expired, delete it
+    $deleteStmt = $db->prepare('DELETE FROM remember_tokens WHERE uid = :uid AND token = :token');
+    $deleteStmt->bindValue(':uid', $uid, SQLITE3_TEXT);
+    $deleteStmt->bindValue(':token', $token, SQLITE3_TEXT);
+    $deleteStmt->execute();
+    return false;
+  }
+  
+  return true;
+}
+
+// Clear expired tokens for a user
+function clearExpiredTokens($db, $uid): void {
+  $stmt = $db->prepare('DELETE FROM remember_tokens WHERE uid = :uid AND expires_at < :now');
+  $stmt->bindValue(':uid', $uid, SQLITE3_TEXT);
+  $stmt->bindValue(':now', time(), SQLITE3_INTEGER);
+  $stmt->execute();
+}
+
+// Clear all tokens for a user (logout)
+function clearAllTokens($db, $uid): void {
+  $stmt = $db->prepare('DELETE FROM remember_tokens WHERE uid = :uid');
+  $stmt->bindValue(':uid', $uid, SQLITE3_TEXT);
+  $stmt->execute();
 }
 
 // Require authentication - return 401 if not authenticated
@@ -188,8 +256,22 @@ switch ($action) {
       if (verifyPassword($db, $uid, $password)) {
         $_SESSION['user_id'] = $uid;
         $_SESSION['auth_' . $uid] = true;
+        
+        // Generate remember token if requested
+        $rememberToken = null;
+        if (isset($_POST['remember']) && $_POST['remember'] === '1') {
+          $rememberToken = generateRememberToken();
+          saveRememberToken($db, $uid, $rememberToken);
+          // Clean up expired tokens
+          clearExpiredTokens($db, $uid);
+        }
+        
         header('Content-Type: application/json; charset=utf-8');
-        echo json_encode(['success' => true, 'message' => 'ログイン成功']);
+        echo json_encode([
+          'success' => true,
+          'message' => 'ログイン成功',
+          'remember_token' => $rememberToken
+        ]);
       } else {
         http_response_code(401);
         header('Content-Type: application/json; charset=utf-8');
@@ -205,13 +287,52 @@ switch ($action) {
       
       $_SESSION['user_id'] = $uid;
       $_SESSION['auth_' . $uid] = true;
+      
+      // Generate remember token if requested
+      $rememberToken = null;
+      if (isset($_POST['remember']) && $_POST['remember'] === '1') {
+        $rememberToken = generateRememberToken();
+        saveRememberToken($db, $uid, $rememberToken);
+      }
+      
       header('Content-Type: application/json; charset=utf-8');
-      echo json_encode(['success' => true, 'message' => '新規登録が完了しました']);
+      echo json_encode([
+        'success' => true,
+        'message' => '新規登録が完了しました',
+        'remember_token' => $rememberToken
+      ]);
+    }
+    break;
+  
+  case 'token_login':
+    // Login using remember token
+    $token = $_POST['token'] ?? '';
+    
+    if (empty($token)) {
+      http_response_code(400);
+      header('Content-Type: application/json; charset=utf-8');
+      echo json_encode(['error' => 'Token required']);
+      break;
+    }
+    
+    // Verify the token
+    if (verifyRememberToken($db, $uid, $token)) {
+      $_SESSION['user_id'] = $uid;
+      $_SESSION['auth_' . $uid] = true;
+      header('Content-Type: application/json; charset=utf-8');
+      echo json_encode(['success' => true, 'message' => 'トークンログイン成功']);
+    } else {
+      http_response_code(401);
+      header('Content-Type: application/json; charset=utf-8');
+      echo json_encode(['error' => 'トークンが無効または期限切れです']);
     }
     break;
   
   case 'logout':
-    // Logout user
+    // Logout user and clear remember tokens
+    if (isset($_SESSION['user_id'])) {
+      clearAllTokens($db, $_SESSION['user_id']);
+    }
     session_unset();
     session_destroy();
     header('Content-Type: application/json; charset=utf-8');
