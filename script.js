@@ -414,6 +414,126 @@ function getMostRecentTargetDay(dayOfWeek) {
   return targetDate;
 }
 
+// Get the next target day (the next occurrence of the specified day of week)
+function getNextTargetDay(dayOfWeek) {
+  const today = new Date();
+  const todayDayOfWeek = today.getDay();
+  let daysUntil = (dayOfWeek - todayDayOfWeek + 7) % 7;
+  
+  // If today is the target day, get next week's target day
+  if (daysUntil === 0) {
+    daysUntil = 7;
+  }
+  
+  const targetDate = new Date(today);
+  targetDate.setDate(today.getDate() + daysUntil);
+  targetDate.setHours(0, 0, 0, 0);
+  return targetDate;
+}
+
+// Format date for reminder display
+function formatReminderDate(date) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+// Format date with day of week
+function formatReminderDateWithDay(date) {
+  const dateStr = formatReminderDate(date);
+  const dayNames = ['日', '月', '火', '水', '木', '金', '土'];
+  const dayOfWeek = dayNames[date.getDay()];
+  return `${dateStr} (${dayOfWeek})`;
+}
+
+// Format datetime for reminder display
+function formatReminderDateTime(date) {
+  const dateStr = formatReminderDate(date);
+  const timeStr = date.toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' });
+  return `${dateStr} ${timeStr}`;
+}
+
+// Get next GTD reminder timing text
+function getNextGTDReminderTiming() {
+  const state = getGTDReminderState();
+  const today = new Date();
+  const todayStr = getTodayString();
+  
+  // Check if snoozed
+  if (state && state.snoozeUntil) {
+    const snoozeTime = new Date(state.snoozeUntil);
+    if (snoozeTime > today) {
+      return formatReminderDateTime(snoozeTime) + ' 頃';
+    }
+  }
+  
+  // Check if done for today
+  if (state && state.lastDate === todayStr && state.doneForToday) {
+    const tomorrow = new Date(today);
+    tomorrow.setDate(today.getDate() + 1);
+    return formatReminderDateWithDay(tomorrow) + ' の最初のアクセス時';
+  }
+  
+  // Unreminded or conditions not met
+  return '条件を満たした日の最初のアクセス時';
+}
+
+// Get next task organization reminder timing text
+function getNextTaskOrgReminderTiming() {
+  const settings = getTaskOrgReminderSettings();
+  const state = getTaskOrgReminderState();
+  
+  if (!settings.enabled) {
+    return '（リマインドは無効です）';
+  }
+  
+  const today = new Date();
+  const todayStr = getTodayString();
+  
+  // Check if snoozed (minute-based)
+  if (state && state.snoozeUntil) {
+    const snoozeTime = new Date(state.snoozeUntil);
+    if (snoozeTime > today) {
+      return formatReminderDateTime(snoozeTime) + ' 頃';
+    }
+  }
+  
+  // Check if remind tomorrow flag is set
+  if (state && state.remindTomorrow) {
+    if (state.remindTomorrow >= todayStr) {
+      const remindDate = new Date(state.remindTomorrow + 'T00:00:00');
+      return formatReminderDateWithDay(remindDate) + ' の最初のアクセス時';
+    }
+  }
+  
+  // Check target day
+  const targetDay = getMostRecentTargetDay(settings.dayOfWeek);
+  const todayDate = new Date(today);
+  todayDate.setHours(0, 0, 0, 0);
+  
+  // Check if completed this week
+  if (state && state.completedDate) {
+    const completedDate = new Date(state.completedDate);
+    completedDate.setHours(0, 0, 0, 0);
+    
+    if (completedDate >= targetDay) {
+      // Completed this week, next reminder is next week's target day
+      const nextTarget = getNextTargetDay(settings.dayOfWeek);
+      return formatReminderDateWithDay(nextTarget) + ' の最初のアクセス時';
+    }
+  }
+  
+  // Not completed - check if today is target day or later
+  if (todayDate >= targetDay) {
+    // Today or past target day, should show today
+    return formatReminderDateWithDay(todayDate) + ' の最初のアクセス時';
+  } else {
+    // Future target day
+    return formatReminderDateWithDay(targetDay) + ' の最初のアクセス時';
+  }
+}
+
 // Check if we should show task organization reminder
 function shouldShowTaskOrgReminder() {
   const settings = getTaskOrgReminderSettings();
@@ -661,10 +781,9 @@ function getTaskOrgReminderStatus() {
   const snoozed = state && state.snoozeUntil && new Date(state.snoozeUntil) > new Date();
   
   if (snoozed) {
-    const snoozeTime = new Date(state.snoozeUntil);
     return {
       enabled: true,
-      status: `スヌーズ中（${snoozeTime.toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' })}まで）`
+      status: 'スヌーズ中'
     };
   }
   
@@ -1464,18 +1583,23 @@ title.style.cssText = 'margin: 0 0 12px; font-size: 16px; text-align: center;';
   
   const gtdStatus = getGTDReminderStatus();
   const gtdStatusText = document.createElement('div');
-  gtdStatusText.style.cssText = 'font-size: 13px; color: #666; margin-bottom: 8px; padding: 8px; background: #f9f9f9; border-radius: 4px;';
+  gtdStatusText.style.cssText = 'font-size: 13px; color: #666; margin-bottom: 0; padding: 8px; background: #f9f9f9; border-radius: 4px;';
   
   let statusMsg = '';
   if (gtdStatus.snoozed) {
-    const snoozeTime = new Date(gtdStatus.snoozeUntil);
-    statusMsg = `スヌーズ中（${snoozeTime.toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' })}まで）`;
+    statusMsg = 'スヌーズ中';
   } else if (gtdStatus.doneForToday) {
     statusMsg = '本日リマインド済み';
   } else {
     statusMsg = '未リマインド';
   }
   gtdStatusText.textContent = `状態: ${statusMsg}`;
+  
+  // Add next reminder timing display
+  const gtdNextTiming = document.createElement('div');
+  gtdNextTiming.style.cssText = 'font-size: 13px; color: #666; margin-bottom: 8px; padding: 8px; background: #f9f9f9; border-radius: 4px; margin-top: -4px; padding-top: 4px;';
+  const nextTimingText = getNextGTDReminderTiming();
+  gtdNextTiming.textContent = `次回リマインド予定: ${nextTimingText}`;
   
   const gtdResetBtn = document.createElement('button');
   gtdResetBtn.textContent = 'リマインド状態をリセット';
@@ -1500,6 +1624,7 @@ title.style.cssText = 'margin: 0 0 12px; font-size: 16px; text-align: center;';
     resetGTDReminderState();
     gtdResetSuccess.textContent = 'リセットしました。次回アクセス時に再チェックされます。';
     gtdStatusText.textContent = '状態: 未リマインド';
+    gtdNextTiming.textContent = `次回リマインド予定: ${getNextGTDReminderTiming()}`;
     setTimeout(() => {
       gtdResetSuccess.textContent = '';
     }, 3000);
@@ -1507,6 +1632,7 @@ title.style.cssText = 'margin: 0 0 12px; font-size: 16px; text-align: center;';
   
   gtdSection.appendChild(gtdTitle);
   gtdSection.appendChild(gtdStatusText);
+  gtdSection.appendChild(gtdNextTiming);
   gtdSection.appendChild(gtdResetBtn);
   gtdSection.appendChild(gtdResetSuccess);
   const gtdDivider = createSectionDivider();
@@ -1688,8 +1814,14 @@ title.style.cssText = 'margin: 0 0 12px; font-size: 16px; text-align: center;';
   // Status display
   const taskOrgStatus = getTaskOrgReminderStatus();
   const taskOrgStatusText = document.createElement('div');
-  taskOrgStatusText.style.cssText = 'font-size: 13px; color: #666; margin-bottom: 8px; padding: 8px; background: #f9f9f9; border-radius: 4px;';
+  taskOrgStatusText.style.cssText = 'font-size: 13px; color: #666; margin-bottom: 0; padding: 8px; background: #f9f9f9; border-radius: 4px;';
   taskOrgStatusText.textContent = `状態: ${taskOrgStatus.status}`;
+  
+  // Add next reminder timing display
+  const taskOrgNextTiming = document.createElement('div');
+  taskOrgNextTiming.style.cssText = 'font-size: 13px; color: #666; margin-bottom: 8px; padding: 8px; background: #f9f9f9; border-radius: 4px; margin-top: -4px; padding-top: 4px;';
+  const taskOrgNextTimingText = getNextTaskOrgReminderTiming();
+  taskOrgNextTiming.textContent = `次回リマインド予定: ${taskOrgNextTimingText}`;
   
   // Reset button
   const taskOrgResetBtn = document.createElement('button');
@@ -1715,6 +1847,7 @@ title.style.cssText = 'margin: 0 0 12px; font-size: 16px; text-align: center;';
     resetTaskOrgReminderState();
     taskOrgResetSuccess.textContent = 'リセットしました。次回アクセス時に再チェックされます。';
     taskOrgStatusText.textContent = '状態: 未完了';
+    taskOrgNextTiming.textContent = `次回リマインド予定: ${getNextTaskOrgReminderTiming()}`;
     setTimeout(() => {
       taskOrgResetSuccess.textContent = '';
     }, 3000);
@@ -1730,6 +1863,7 @@ title.style.cssText = 'margin: 0 0 12px; font-size: 16px; text-align: center;';
   taskOrgSection.appendChild(taskOrgSaveBtn);
   taskOrgSection.appendChild(taskOrgSaveSuccess);
   taskOrgSection.appendChild(taskOrgStatusText);
+  taskOrgSection.appendChild(taskOrgNextTiming);
   taskOrgSection.appendChild(taskOrgResetBtn);
   taskOrgSection.appendChild(taskOrgResetSuccess);
   
