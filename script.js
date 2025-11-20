@@ -1968,7 +1968,7 @@ title.style.cssText = 'margin: 0 0 12px; font-size: 16px; text-align: center;';
     try {
       // Don't clear the remember cookie - keep username for next login
       // The backend will invalidate the token
-      await fetch('api.php?action=logout', { method: 'POST' });
+      await fetch(addUIDToURL('api.php?action=logout'), { method: 'POST' });
       window.location.reload();
     } catch (err) {
       console.error('Logout error:', err);
