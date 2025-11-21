@@ -4,6 +4,14 @@
 // deadline: ISO date string or null
 // collapsed: boolean (only for collapsible-heading)
 
+// Detect iOS Safari for special handling
+function isIOSSafari() {
+  const ua = navigator.userAgent;
+  const isIOS = /iPad|iPhone|iPod/.test(ua) && !window.MSStream;
+  const isSafari = /Safari/.test(ua) && !/Chrome|CriOS|FxiOS|EdgiOS/.test(ua);
+  return isIOS && isSafari;
+}
+
 // User ID Management for per-user database separation
 let userID = null;
 let isLoggedIn = false;
@@ -5781,14 +5789,17 @@ function handleEnter(item, li, content) {
     insertItemAfter(item.id, nextTypeValue, textForNextRow, (data) => {
       const newId = data && data.id;
       if (newId) {
-        setTimeout(() => focusItem(newId, { position: 'start' }), 150);
+        // For iOS Safari, focus immediately to prevent keyboard from closing
+        const focusDelay = isIOSSafari() ? 10 : 150;
+        setTimeout(() => focusItem(newId, { position: 'start' }), focusDelay);
         return;
       }
       const currentIndex = items.findIndex(i => i.id === item.id);
       if (currentIndex !== -1 && currentIndex < items.length - 1) {
         const nextItem = items[currentIndex + 1];
         if (nextItem) {
-          setTimeout(() => focusItem(nextItem.id, { position: 'start' }), 100);
+          const focusDelay = isIOSSafari() ? 10 : 100;
+          setTimeout(() => focusItem(nextItem.id, { position: 'start' }), focusDelay);
         }
       }
     }, insertOptions);
@@ -5986,42 +5997,91 @@ function selectFromCursorToEnd(content) {
 function focusItem(id, options = {}) {
   const position = options.position || 'end';
   const offset = options.offset;
-  setTimeout(() => {
+  
+  // For iOS Safari, use immediate focus to prevent keyboard from closing
+  const delay = isIOSSafari() ? 0 : 50;
+  
+  const performFocus = () => {
     const li = list.querySelector(`li[data-id="${id}"]`);
     if (li) {
       const content = li.querySelector('.task-content');
       if (content) {
-        content.focus();
-        const range = document.createRange();
-        const sel = window.getSelection();
+        // On iOS Safari, ensure element is focusable and force focus
+        if (isIOSSafari()) {
+          content.setAttribute('contenteditable', 'true');
+          // Force a synchronous focus
+          content.focus({ preventScroll: false });
+          
+          // Immediately set cursor position
+          requestAnimationFrame(() => {
+            const range = document.createRange();
+            const sel = window.getSelection();
 
-        // If offset is specified, try to position cursor at that offset
-        if (typeof offset === 'number') {
-          const targetOffset = Math.min(offset, content.textContent.length);
-          const point = resolveOffsetToRangePoint(content, targetOffset);
-          if (point && point.node) {
-            range.setStart(point.node, point.offset);
+            // If offset is specified, try to position cursor at that offset
+            if (typeof offset === 'number') {
+              const targetOffset = Math.min(offset, content.textContent.length);
+              const point = resolveOffsetToRangePoint(content, targetOffset);
+              if (point && point.node) {
+                range.setStart(point.node, point.offset);
+                range.collapse(true);
+                sel.removeAllRanges();
+                sel.addRange(range);
+                return;
+              }
+            }
+
+            // Otherwise use position-based focusing
+            if (position === 'start') {
+              range.setStart(content, 0);
+            } else if (content.childNodes.length > 0) {
+              range.setStart(content.childNodes[0], content.textContent.length);
+            } else {
+              range.setStart(content, 0);
+            }
             range.collapse(true);
             sel.removeAllRanges();
             sel.addRange(range);
-            return;
-          }
-        }
-
-        // Otherwise use position-based focusing
-        if (position === 'start') {
-          range.setStart(content, 0);
-        } else if (content.childNodes.length > 0) {
-          range.setStart(content.childNodes[0], content.textContent.length);
+          });
         } else {
-          range.setStart(content, 0);
+          // Standard focus for non-iOS browsers
+          content.focus();
+          const range = document.createRange();
+          const sel = window.getSelection();
+
+          // If offset is specified, try to position cursor at that offset
+          if (typeof offset === 'number') {
+            const targetOffset = Math.min(offset, content.textContent.length);
+            const point = resolveOffsetToRangePoint(content, targetOffset);
+            if (point && point.node) {
+              range.setStart(point.node, point.offset);
+              range.collapse(true);
+              sel.removeAllRanges();
+              sel.addRange(range);
+              return;
+            }
+          }
+
+          // Otherwise use position-based focusing
+          if (position === 'start') {
+            range.setStart(content, 0);
+          } else if (content.childNodes.length > 0) {
+            range.setStart(content.childNodes[0], content.textContent.length);
+          } else {
+            range.setStart(content, 0);
+          }
+          range.collapse(true);
+          sel.removeAllRanges();
+          sel.addRange(range);
         }
-        range.collapse(true);
-        sel.removeAllRanges();
-        sel.addRange(range);
       }
     }
-  }, 50);
+  };
+  
+  if (delay > 0) {
+    setTimeout(performFocus, delay);
+  } else {
+    performFocus();
+  }
 }
 
 // Focus previous item

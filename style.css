@@ -12,6 +12,9 @@ body {
   padding: 20px;
   min-height: 100vh;
   font-size: 13px;
+  /* iOS Safari optimizations */
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-y: none;
 }
 
 .container {
@@ -409,6 +412,7 @@ input[type="checkbox"] {
   line-height: 1.5;
   word-wrap: break-word;
   white-space: pre-wrap;
+  touch-action: manipulation;
 }
 
 .task-content:focus {
@@ -476,43 +480,161 @@ button.delete:hover {
 /* Mobile responsiveness */
 @media (max-width: 768px) {
   body {
-    padding: 8px;
-    font-size: 12px;
+    padding: 12px 8px;
+    font-size: 14px;
+    -webkit-text-size-adjust: 100%;
+    -webkit-tap-highlight-color: rgba(0, 0, 0, 0);
   }
   
   .container {
-    padding: 8px;
+    padding: 12px;
     border-radius: 4px;
+    max-width: 100%;
+    overflow-x: hidden;
   }
   
   .reorder-toggle,
   .settings-toggle {
-    right: 16px;
-    width: 22px;
-    height: 22px;
-    font-size: 12px;
+    right: 12px;
+    width: 44px;
+    height: 44px;
+    font-size: 18px;
+    touch-action: manipulation;
   }
   
   .reorder-toggle {
-    bottom: 44px;
+    bottom: 60px;
   }
   
   .settings-toggle {
-    bottom: 12px;
+    bottom: 8px;
   }
   
   li {
-    padding: 0 3px;
-    min-height: 20px;
-    gap: 2px;
+    padding: 4px 6px;
+    min-height: 36px;
+    gap: 6px;
   }
   
   .delete {
-    opacity: 0.5;
+    opacity: 0.7;
+    width: 36px;
+    height: 36px;
+    font-size: 24px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    touch-action: manipulation;
   }
   
   .task-content {
+    font-size: 15px;
+    line-height: 1.6;
+    padding: 6px 8px;
+    min-height: 24px;
+    -webkit-user-select: text;
+    user-select: text;
+  }
+  
+  /* Increase tap targets for checkboxes and bullets */
+  input[type="checkbox"] {
+    width: 24px;
+    height: 24px;
+    min-width: 24px;
+    touch-action: manipulation;
+  }
+  
+  .list-bullet {
+    font-size: 20px;
+    width: 24px;
+  }
+  
+  /* Heading adjustments for mobile */
+  li[data-type="heading"] .task-content,
+  li[data-type="collapsible-heading"] .task-content,
+  li[data-type="gtd-heading"] .task-content {
+    font-size: 16px;
+    padding: 8px;
+  }
+  
+  /* Collapse icon larger for easier tapping */
+  .collapse-icon {
+    width: 32px;
+    height: 32px;
+    font-size: 16px;
+    touch-action: manipulation;
+  }
+  
+  .gtd-icon {
+    width: 32px;
+    height: 32px;
+    font-size: 18px;
+    touch-action: manipulation;
+  }
+  
+  /* Prevent text selection issues on mobile */
+  .task-content:focus {
+    -webkit-user-select: text;
+    user-select: text;
+  }
+  
+  /* Improve deadline indicator visibility on mobile */
+  .deadline-indicator {
     font-size: 12px;
+    padding: 4px 8px;
+    min-width: 36px;
+  }
+  
+  /* Better reorder mode on mobile */
+  body.reorder-mode li::before {
+    font-size: 18px;
+    left: 8px;
+  }
+  
+  body.reorder-mode li {
+    padding-left: 32px;
+  }
+}
+
+/* iPhone / iOS Safari specific optimizations */
+@supports (-webkit-touch-callout: none) {
+  @media (max-width: 768px) {
+    /* iOS Safari specific fixes */
+    body {
+      /* Prevent bounce effect at page edges */
+      position: fixed;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+    }
+    
+    .container {
+      /* Enable scrolling within container */
+      height: calc(100vh - 24px);
+      overflow-y: auto;
+      -webkit-overflow-scrolling: touch;
+    }
+    
+    /* Prevent zoom on input focus */
+    .task-content {
+      font-size: 16px !important;
+    }
+    
+    li[data-type="heading"] .task-content,
+    li[data-type="collapsible-heading"] .task-content,
+    li[data-type="gtd-heading"] .task-content {
+      font-size: 18px !important;
+    }
+    
+    /* Ensure contenteditable doesn't cause zoom */
+    .task-content:focus {
+      font-size: 16px !important;
+    }
+    
+    /* Improve touch scrolling */
+    ul {
+      -webkit-overflow-scrolling: touch;
+    }
   }
 }
 
