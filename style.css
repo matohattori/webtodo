@@ -9,7 +9,7 @@ body {
   font-family: system-ui, -apple-system, Segoe UI, Roboto, Noto Sans JP, sans-serif;
   display: flex;
   justify-content: center;
-  padding: 20px;
+  padding: 10px;
   min-height: 100vh;
   font-size: 13px;
 }
@@ -17,7 +17,7 @@ body {
 .container {
   width: 100%;
   max-width: 800px;
-  padding: 16px;
+  padding: 8px;
   background: #EAF4FF;
   border-radius: 8px;
   box-shadow: none;
