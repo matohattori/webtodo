@@ -4,6 +4,42 @@
 // deadline: ISO date string or null
 // collapsed: boolean (only for collapsible-heading)
 
+// Detect iPhone Safari for special handling
+// iOS Safari has known issues with programmatic focus and keyboard display
+// when DOM is being dynamically updated
+function isIPhoneSafari() {
+  if (typeof window === 'undefined' || !navigator) return false;
+  
+  const ua = navigator.userAgent;
+  // Check for iPhone device specifically (not iPad or iPod)
+  const isIPhone = /iPhone/.test(ua);
+  // Check for Safari (not Chrome, Firefox, or Edge on iOS)
+  const isSafari = /Safari/.test(ua) && !/CriOS|FxiOS|EdgiOS/.test(ua);
+  // Verify it's WebKit-based (should always be true for Safari, but extra safety)
+  const isWebKit = /AppleWebKit/.test(ua);
+  
+  return isIPhone && isSafari && isWebKit;
+}
+
+// Detect if running on a real mobile device (not just a narrow window)
+// This helps distinguish between mobile devices and desktop apps like WebView2
+function isMobileDevice() {
+  if (typeof window === 'undefined' || !navigator) return false;
+  
+  const ua = navigator.userAgent;
+  // Check for mobile devices (iPhone, iPad, iPod, Android)
+  const isMobile = /iPhone|iPad|iPod|Android/i.test(ua);
+  // WebView2 and desktop browsers should not trigger mobile styles
+  // even if the window is narrow
+  const isDesktopApp = /Electron|WebView2/i.test(ua);
+  
+  return isMobile && !isDesktopApp;
+}
+
+// Cache the detection results
+const IS_IPHONE_SAFARI = isIPhoneSafari();
+const IS_MOBILE_DEVICE = isMobileDevice();
+
 // User ID Management for per-user database separation
 let userID = null;
 let isLoggedIn = false;
@@ -5760,7 +5796,8 @@ function handleEnter(item, li, content) {
     // Insert a blank line BEFORE the current heading, keeping the heading content as-is
     insertItemBefore(item.id, 'text', '', (data) => {
       // After inserting blank line before, focus should remain at the beginning of the heading
-      setTimeout(() => focusItem(item.id, { position: 'start' }), 150);
+      const focusDelay = IS_IPHONE_SAFARI ? 200 : 150;
+      setTimeout(() => focusItem(item.id, { position: 'start' }), focusDelay);
     }, { allowEmpty: true, skipReload: true });
     return;
   }
@@ -5781,7 +5818,12 @@ function handleEnter(item, li, content) {
     insertItemAfter(item.id, nextTypeValue, textForNextRow, (data) => {
       const newId = data && data.id;
       if (newId) {
-        setTimeout(() => focusItem(newId, { position: 'start' }), 150);
+        // On iPhone Safari, we need a longer delay to ensure the DOM is updated and ready
+        const focusDelay = IS_IPHONE_SAFARI ? 200 : 150;
+        setTimeout(() => {
+          // focusItem now handles the retry logic internally for iPhone Safari
+          focusItem(newId, { position: 'start', retry: true });
+        }, focusDelay);
         return;
       }
       const currentIndex = items.findIndex(i => i.id === item.id);
@@ -5986,42 +6028,75 @@ function selectFromCursorToEnd(content) {
 function focusItem(id, options = {}) {
   const position = options.position || 'end';
   const offset = options.offset;
+  // Default to true, only disable retry if explicitly set to false
+  const retry = options.retry === undefined ? true : options.retry;
+  const delay = IS_IPHONE_SAFARI ? 100 : 50;
+  
   setTimeout(() => {
     const li = list.querySelector(`li[data-id="${id}"]`);
     if (li) {
       const content = li.querySelector('.task-content');
       if (content) {
+        // On iPhone Safari, we need to ensure the element is in view before focusing
+        if (IS_IPHONE_SAFARI) {
+          content.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+        
         content.focus();
-        const range = document.createRange();
-        const sel = window.getSelection();
+        
+        // On iPhone Safari, we need to add a small delay before setting selection
+        const setSelection = () => {
+          const range = document.createRange();
+          const sel = window.getSelection();
 
-        // If offset is specified, try to position cursor at that offset
-        if (typeof offset === 'number') {
-          const targetOffset = Math.min(offset, content.textContent.length);
-          const point = resolveOffsetToRangePoint(content, targetOffset);
-          if (point && point.node) {
-            range.setStart(point.node, point.offset);
-            range.collapse(true);
-            sel.removeAllRanges();
-            sel.addRange(range);
-            return;
+          // If offset is specified, try to position cursor at that offset
+          if (typeof offset === 'number') {
+            const targetOffset = Math.min(offset, content.textContent.length);
+            const point = resolveOffsetToRangePoint(content, targetOffset);
+            if (point && point.node) {
+              range.setStart(point.node, point.offset);
+              range.collapse(true);
+              sel.removeAllRanges();
+              sel.addRange(range);
+              return;
+            }
           }
-        }
 
-        // Otherwise use position-based focusing
-        if (position === 'start') {
-          range.setStart(content, 0);
-        } else if (content.childNodes.length > 0) {
-          range.setStart(content.childNodes[0], content.textContent.length);
+          // Otherwise use position-based focusing
+          if (position === 'start') {
+            range.setStart(content, 0);
+          } else if (content.childNodes.length > 0) {
+            range.setStart(content.childNodes[0], content.textContent.length);
+          } else {
+            range.setStart(content, 0);
+          }
+          range.collapse(true);
+          sel.removeAllRanges();
+          sel.addRange(range);
+        };
+        
+        if (IS_IPHONE_SAFARI) {
+          // Add additional delay for iPhone Safari to ensure focus is established
+          setTimeout(() => {
+            setSelection();
+            
+            // Retry focus if it didn't stick (only on iPhone Safari and if retry is enabled)
+            if (retry) {
+              setTimeout(() => {
+                if (document.activeElement !== content) {
+                  content.focus();
+                  // Also trigger click to ensure keyboard opens
+                  content.click();
+                }
+              }, 100);
+            }
+          }, 50);
         } else {
-          range.setStart(content, 0);
+          setSelection();
         }
-        range.collapse(true);
-        sel.removeAllRanges();
-        sel.addRange(range);
       }
     }
-  }, 50);
+  }, delay);
 }
 
 // Focus previous item
@@ -6210,6 +6285,13 @@ function handleDrop(e) {
 
 // Initialize
 window.addEventListener('load', async () => {
+  // Add device class to body for CSS targeting
+  // This allows us to apply mobile styles only to real mobile devices,
+  // not desktop apps like WebView2 with narrow windows
+  if (IS_MOBILE_DEVICE) {
+    document.body.classList.add('mobile-device');
+  }
+  
   try {
     // Check if user is logged in via session
     const sessionResponse = await fetch('api.php?action=check_session');
