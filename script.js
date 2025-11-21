@@ -4,6 +4,17 @@
 // deadline: ISO date string or null
 // collapsed: boolean (only for collapsible-heading)
 
+// Detect iPhone Safari for special handling
+function isIPhoneSafari() {
+  const ua = navigator.userAgent;
+  const isIPhone = /iPhone/.test(ua);
+  const isSafari = /Safari/.test(ua) && !/CriOS|FxiOS|EdgiOS/.test(ua);
+  return isIPhone && isSafari;
+}
+
+// Cache the detection result
+const IS_IPHONE_SAFARI = isIPhoneSafari();
+
 // User ID Management for per-user database separation
 let userID = null;
 let isLoggedIn = false;
@@ -5760,7 +5771,8 @@ function handleEnter(item, li, content) {
     // Insert a blank line BEFORE the current heading, keeping the heading content as-is
     insertItemBefore(item.id, 'text', '', (data) => {
       // After inserting blank line before, focus should remain at the beginning of the heading
-      setTimeout(() => focusItem(item.id, { position: 'start' }), 150);
+      const focusDelay = IS_IPHONE_SAFARI ? 200 : 150;
+      setTimeout(() => focusItem(item.id, { position: 'start' }), focusDelay);
     }, { allowEmpty: true, skipReload: true });
     return;
   }
@@ -5781,7 +5793,26 @@ function handleEnter(item, li, content) {
     insertItemAfter(item.id, nextTypeValue, textForNextRow, (data) => {
       const newId = data && data.id;
       if (newId) {
-        setTimeout(() => focusItem(newId, { position: 'start' }), 150);
+        // On iPhone Safari, we need a longer delay to ensure the DOM is updated and ready
+        const focusDelay = IS_IPHONE_SAFARI ? 200 : 150;
+        setTimeout(() => {
+          focusItem(newId, { position: 'start' });
+          
+          // On iPhone Safari, force focus again if it didn't stick
+          if (IS_IPHONE_SAFARI) {
+            setTimeout(() => {
+              const targetLi = list.querySelector(`li[data-id="${newId}"]`);
+              if (targetLi) {
+                const targetContent = targetLi.querySelector('.task-content');
+                if (targetContent && document.activeElement !== targetContent) {
+                  targetContent.focus();
+                  // Also trigger click to ensure keyboard opens
+                  targetContent.click();
+                }
+              }
+            }, 100);
+          }
+        }, focusDelay);
         return;
       }
       const currentIndex = items.findIndex(i => i.id === item.id);
@@ -5986,42 +6017,60 @@ function selectFromCursorToEnd(content) {
 function focusItem(id, options = {}) {
   const position = options.position || 'end';
   const offset = options.offset;
+  const delay = IS_IPHONE_SAFARI ? 100 : 50;
+  
   setTimeout(() => {
     const li = list.querySelector(`li[data-id="${id}"]`);
     if (li) {
       const content = li.querySelector('.task-content');
       if (content) {
+        // On iPhone Safari, we need to ensure the element is in view before focusing
+        if (IS_IPHONE_SAFARI) {
+          content.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+        
         content.focus();
-        const range = document.createRange();
-        const sel = window.getSelection();
+        
+        // On iPhone Safari, we need to add a small delay before setting selection
+        const setSelection = () => {
+          const range = document.createRange();
+          const sel = window.getSelection();
 
-        // If offset is specified, try to position cursor at that offset
-        if (typeof offset === 'number') {
-          const targetOffset = Math.min(offset, content.textContent.length);
-          const point = resolveOffsetToRangePoint(content, targetOffset);
-          if (point && point.node) {
-            range.setStart(point.node, point.offset);
-            range.collapse(true);
-            sel.removeAllRanges();
-            sel.addRange(range);
-            return;
+          // If offset is specified, try to position cursor at that offset
+          if (typeof offset === 'number') {
+            const targetOffset = Math.min(offset, content.textContent.length);
+            const point = resolveOffsetToRangePoint(content, targetOffset);
+            if (point && point.node) {
+              range.setStart(point.node, point.offset);
+              range.collapse(true);
+              sel.removeAllRanges();
+              sel.addRange(range);
+              return;
+            }
           }
-        }
 
-        // Otherwise use position-based focusing
-        if (position === 'start') {
-          range.setStart(content, 0);
-        } else if (content.childNodes.length > 0) {
-          range.setStart(content.childNodes[0], content.textContent.length);
+          // Otherwise use position-based focusing
+          if (position === 'start') {
+            range.setStart(content, 0);
+          } else if (content.childNodes.length > 0) {
+            range.setStart(content.childNodes[0], content.textContent.length);
+          } else {
+            range.setStart(content, 0);
+          }
+          range.collapse(true);
+          sel.removeAllRanges();
+          sel.addRange(range);
+        };
+        
+        if (IS_IPHONE_SAFARI) {
+          // Add additional delay for iPhone Safari to ensure focus is established
+          setTimeout(setSelection, 50);
         } else {
-          range.setStart(content, 0);
+          setSelection();
         }
-        range.collapse(true);
-        sel.removeAllRanges();
-        sel.addRange(range);
       }
     }
-  }, 50);
+  }, delay);
 }
 
 // Focus previous item
