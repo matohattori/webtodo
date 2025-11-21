@@ -11,14 +11,14 @@ function isIPhoneSafari() {
   if (typeof window === 'undefined' || !navigator) return false;
   
   const ua = navigator.userAgent;
-  // Check for iPhone device
+  // Check for iPhone device specifically (not iPad or iPod)
   const isIPhone = /iPhone/.test(ua);
   // Check for Safari (not Chrome, Firefox, or Edge on iOS)
   const isSafari = /Safari/.test(ua) && !/CriOS|FxiOS|EdgiOS/.test(ua);
-  // Check for iOS by looking for both iPhone and webkit
-  const isIOS = /iPhone|iPad|iPod/.test(ua) && /AppleWebKit/.test(ua);
+  // Verify it's WebKit-based (should always be true for Safari, but extra safety)
+  const isWebKit = /AppleWebKit/.test(ua);
   
-  return isIPhone && isSafari && isIOS;
+  return isIPhone && isSafari && isWebKit;
 }
 
 // Cache the detection result
@@ -6012,7 +6012,8 @@ function selectFromCursorToEnd(content) {
 function focusItem(id, options = {}) {
   const position = options.position || 'end';
   const offset = options.offset;
-  const retry = options.retry !== false; // Default to true
+  // Default to true, only disable retry if explicitly set to false
+  const retry = options.retry === undefined ? true : options.retry;
   const delay = IS_IPHONE_SAFARI ? 100 : 50;
   
   setTimeout(() => {

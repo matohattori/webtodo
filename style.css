@@ -580,6 +580,9 @@ button.delete:hover {
 
 /* iOS Safari-specific optimizations */
 /* These optimizations help with iOS Safari's specific quirks */
+/* Note: -webkit-touch-callout is primarily supported on iOS Safari, though other
+   WebKit browsers may also support it. This is acceptable as these optimizations
+   are generally beneficial for all mobile WebKit browsers. */
 @supports (-webkit-touch-callout: none) {
   @media (max-width: 768px) {
     /* Prevent text size adjustment on orientation change (iOS) */
