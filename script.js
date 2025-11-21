@@ -17,6 +17,38 @@ function addUIDToURL(url) {
 // Authentication management
 let authDialogShown = false;
 
+// Cookie management for remember me feature
+function setRememberCookie(uid, days = 30) {
+  const expires = new Date();
+  expires.setTime(expires.getTime() + days * 24 * 60 * 60 * 1000);
+  const cookieValue = JSON.stringify({ uid });
+  document.cookie = `webtodo_remember=${encodeURIComponent(cookieValue)};expires=${expires.toUTCString()};path=/;SameSite=Strict${window.location.protocol === 'https:' ? ';Secure' : ''}`;
+}
+
+function getRememberCookie() {
+  const name = 'webtodo_remember=';
+  const decodedCookie = decodeURIComponent(document.cookie);
+  const ca = decodedCookie.split(';');
+  for (let i = 0; i < ca.length; i++) {
+    let c = ca[i];
+    while (c.charAt(0) === ' ') {
+      c = c.substring(1);
+    }
+    if (c.indexOf(name) === 0) {
+      try {
+        return JSON.parse(c.substring(name.length, c.length));
+      } catch (e) {
+        return null;
+      }
+    }
+  }
+  return null;
+}
+
+function clearRememberCookie() {
+  document.cookie = 'webtodo_remember=;expires=Thu, 01 Jan 1970 00:00:00 UTC;path=/;SameSite=Strict';
+}
+
 // Show login screen
 function showLoginScreen() {
   const overlay = document.createElement('div');
@@ -31,7 +63,7 @@ function showLoginScreen() {
     padding: 16px;
     z-index: 10000;
   `;
-  
+
   const dialog = document.createElement('div');
   dialog.className = 'login-dialog';
   dialog.style.cssText = `
@@ -42,15 +74,15 @@ function showLoginScreen() {
     max-width: 400px;
     width: 90%;
   `;
-  
+
   const title = document.createElement('h2');
   title.textContent = 'Web ToDo ログイン';
   title.style.cssText = 'margin: 0 0 24px 0; font-size: 20px; text-align: center;';
-  
+
   const idLabel = document.createElement('label');
   idLabel.textContent = 'ユーザーID:';
   idLabel.style.cssText = 'display: block; font-size: 14px; margin-bottom: 4px; font-weight: 500;';
-  
+
   const idInput = document.createElement('input');
   idInput.type = 'text';
   idInput.placeholder = 'ユーザーID（英数字、ハイフンのみ）';
@@ -63,11 +95,11 @@ function showLoginScreen() {
     box-sizing: border-box;
     margin-bottom: 16px;
   `;
-  
+
   const passwordLabel = document.createElement('label');
   passwordLabel.textContent = 'パスワード:';
   passwordLabel.style.cssText = 'display: block; font-size: 14px; margin-bottom: 4px; font-weight: 500;';
-  
+
   const passwordInput = document.createElement('input');
   passwordInput.type = 'password';
   passwordInput.placeholder = 'パスワード';
@@ -80,14 +112,33 @@ function showLoginScreen() {
     box-sizing: border-box;
     margin-bottom: 16px;
   `;
-  
+
   const error = document.createElement('div');
   error.style.cssText = 'color: #d00; font-size: 13px; margin-bottom: 16px; min-height: 20px;';
-  
+
   const info = document.createElement('div');
   info.textContent = '※初めてのIDの場合、パスワードを設定して新規登録します';
   info.style.cssText = 'color: #666; font-size: 12px; margin-bottom: 16px;';
-  
+
+  const rememberCheckbox = document.createElement('input');
+  rememberCheckbox.type = 'checkbox';
+  rememberCheckbox.id = 'rememberMe';
+  rememberCheckbox.style.cssText = 'margin-right: 6px;';
+
+  const rememberLabel = document.createElement('label');
+  rememberLabel.htmlFor = 'rememberMe';
+  rememberLabel.textContent = 'ユーザーIDを記憶する';
+  rememberLabel.style.cssText = 'font-size: 13px; color: #555; cursor: pointer;';
+
+  const rememberContainer = document.createElement('div');
+  rememberContainer.style.cssText = 'margin-bottom: 12px; display: flex; align-items: center;';
+  rememberContainer.appendChild(rememberCheckbox);
+  rememberContainer.appendChild(rememberLabel);
+
+  const rememberNote = document.createElement('div');
+  rememberNote.textContent = '※次回以降、自動でユーザーIDが入力されます（この端末のみ）';
+  rememberNote.style.cssText = 'color: #888; font-size: 11px; margin-bottom: 16px; line-height: 1.4;';
+
   const loginBtn = document.createElement('button');
   const loginButtonDefaultText = 'ログイン / 新規登録';
   loginBtn.textContent = loginButtonDefaultText;
@@ -102,7 +153,7 @@ function showLoginScreen() {
     font-size: 15px;
     font-weight: 500;
   `;
-  
+
   const showRegistrationConfirmDialog = (userId) => {
     return new Promise((resolve) => {
       const confirmOverlay = document.createElement('div');
@@ -116,7 +167,7 @@ function showLoginScreen() {
         justify-content: center;
         z-index: 10001;
       `;
-      
+
       const confirmDialog = document.createElement('div');
       confirmDialog.className = 'login-confirm-dialog';
       confirmDialog.style.cssText = `
@@ -128,25 +179,25 @@ function showLoginScreen() {
         box-sizing: border-box;
         text-align: left;
       `;
-      
+
       const heading = document.createElement('h3');
       heading.textContent = '新規登録の確認';
       heading.style.cssText = 'margin: 0 0 12px; font-size: 18px; color: #1e3a5f;';
       confirmDialog.appendChild(heading);
-      
+
       const message = document.createElement('p');
       message.textContent = `ユーザーID「${userId}」は未登録です。新規登録を実行してよろしいですか？`;
       message.style.cssText = 'margin: 0 0 16px; font-size: 14px; color: #333; line-height: 1.6;';
       confirmDialog.appendChild(message);
-      
+
       const caution = document.createElement('p');
       caution.textContent = '登録後はこのパスワードでログインできるようになります。';
       caution.style.cssText = 'margin: 0 0 20px; font-size: 12px; color: #666;';
       confirmDialog.appendChild(caution);
-      
+
       const btnRow = document.createElement('div');
       btnRow.style.cssText = 'display: flex; justify-content: flex-end; gap: 8px;';
-      
+
       const cancelBtn = document.createElement('button');
       cancelBtn.textContent = 'キャンセル';
       cancelBtn.style.cssText = `
@@ -158,7 +209,7 @@ function showLoginScreen() {
         cursor: pointer;
         font-size: 13px;
       `;
-      
+
       const confirmBtn = document.createElement('button');
       confirmBtn.textContent = '新規登録する';
       confirmBtn.style.cssText = `
@@ -171,13 +222,13 @@ function showLoginScreen() {
         font-size: 13px;
         font-weight: 600;
       `;
-      
+
       const cleanup = (result) => {
         document.removeEventListener('keydown', handleKeyDown);
         confirmOverlay.remove();
         resolve(result);
       };
-      
+
       const handleKeyDown = (evt) => {
         if (evt.key === 'Escape') {
           evt.preventDefault();
@@ -187,7 +238,7 @@ function showLoginScreen() {
           cleanup(true);
         }
       };
-      
+
       cancelBtn.addEventListener('click', () => cleanup(false));
       confirmBtn.addEventListener('click', () => cleanup(true));
       confirmOverlay.addEventListener('click', (evt) => {
@@ -195,7 +246,7 @@ function showLoginScreen() {
           cleanup(false);
         }
       });
-      
+
       btnRow.appendChild(cancelBtn);
       btnRow.appendChild(confirmBtn);
       confirmDialog.appendChild(btnRow);
@@ -205,30 +256,30 @@ function showLoginScreen() {
       confirmBtn.focus();
     });
   };
-  
+
   loginBtn.onclick = async () => {
     const id = idInput.value.trim();
     const password = passwordInput.value;
-    
+
     if (!id) {
       error.textContent = 'ユーザーIDを入力してください';
       return;
     }
-    
+
     if (!/^[a-zA-Z0-9\-]+$/.test(id)) {
       error.textContent = 'ユーザーIDは英数字とハイフンのみ使用できます';
       return;
     }
-    
+
     if (!password) {
       error.textContent = 'パスワードを入力してください';
       return;
     }
-    
+
     try {
       loginBtn.disabled = true;
       loginBtn.textContent = '確認中...';
-      
+
       let isNewRegistration = false;
       try {
         const status = await fetchUserAuthStatus(id);
@@ -236,7 +287,7 @@ function showLoginScreen() {
       } catch (statusError) {
         console.warn('Failed to check registration state:', statusError);
       }
-      
+
       if (isNewRegistration) {
         const confirmed = await showRegistrationConfirmDialog(id);
         if (!confirmed) {
@@ -246,22 +297,34 @@ function showLoginScreen() {
           return;
         }
       }
-      
+
       loginBtn.textContent = '処理中...';
-      
+
       // Try to login with the provided credentials
       const loginResponse = await fetch(`api.php?action=login&uid=${encodeURIComponent(id)}`, {
         method: 'POST',
-        headers: {'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8'},
-        body: new URLSearchParams({ password })
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8' },
+        body: new URLSearchParams({
+          password,
+          remember: rememberCheckbox.checked ? '1' : '0'
+        })
       });
-      
+
       const data = await loginResponse.json();
-      
+
       if (loginResponse.ok && data.success) {
         // Login successful
         userID = id;
         isLoggedIn = true;
+
+        // Handle remember me
+        if (rememberCheckbox.checked) {
+          setRememberCookie(id);
+        } else {
+          // Clear any existing remember cookie
+          clearRememberCookie();
+        }
+
         overlay.remove();
         initializeApp();
       } else {
@@ -282,16 +345,16 @@ function showLoginScreen() {
       loginBtn.textContent = loginButtonDefaultText;
     }
   };
-  
+
   const handleKeyDown = (e) => {
     if (e.key === 'Enter') {
       loginBtn.click();
     }
   };
-  
+
   idInput.addEventListener('keydown', handleKeyDown);
   passwordInput.addEventListener('keydown', handleKeyDown);
-  
+
   dialog.appendChild(title);
   dialog.appendChild(idLabel);
   dialog.appendChild(idInput);
@@ -299,11 +362,26 @@ function showLoginScreen() {
   dialog.appendChild(passwordInput);
   dialog.appendChild(error);
   dialog.appendChild(info);
+  dialog.appendChild(rememberContainer);
+  dialog.appendChild(rememberNote);
   dialog.appendChild(loginBtn);
   overlay.appendChild(dialog);
   document.body.appendChild(overlay);
-  
-  setTimeout(() => idInput.focus(), 100);
+
+  // Try to auto-fill from remember cookie
+  const rememberedCreds = getRememberCookie();
+  if (rememberedCreds) {
+    idInput.value = rememberedCreds.uid;
+    rememberCheckbox.checked = true;
+  }
+
+  setTimeout(() => {
+    if (idInput.value) {
+      passwordInput.focus();
+    } else {
+      idInput.focus();
+    }
+  }, 100);
 }
 
 // Fetch whether the provided UID already has a password set
@@ -419,12 +497,12 @@ function getNextTargetDay(dayOfWeek) {
   const today = new Date();
   const todayDayOfWeek = today.getDay();
   let daysUntil = (dayOfWeek - todayDayOfWeek + 7) % 7;
-  
+
   // If today is the target day, get next week's target day
   if (daysUntil === 0) {
     daysUntil = 7;
   }
-  
+
   const targetDate = new Date(today);
   targetDate.setDate(today.getDate() + daysUntil);
   targetDate.setHours(0, 0, 0, 0);
@@ -459,7 +537,7 @@ function getNextGTDReminderTiming() {
   const state = getGTDReminderState();
   const today = new Date();
   const todayStr = getTodayString();
-  
+
   // Check if snoozed
   if (state && state.snoozeUntil) {
     const snoozeTime = new Date(state.snoozeUntil);
@@ -467,14 +545,14 @@ function getNextGTDReminderTiming() {
       return formatReminderDateTime(snoozeTime) + ' 頃';
     }
   }
-  
+
   // Check if done for today
   if (state && state.lastDate === todayStr && state.doneForToday) {
     const tomorrow = new Date(today);
     tomorrow.setDate(today.getDate() + 1);
     return formatReminderDateWithDay(tomorrow) + ' の最初のアクセス時';
   }
-  
+
   // Unreminded or conditions not met
   return '条件を満たした日の最初のアクセス時';
 }
@@ -483,14 +561,14 @@ function getNextGTDReminderTiming() {
 function getNextTaskOrgReminderTiming() {
   const settings = getTaskOrgReminderSettings();
   const state = getTaskOrgReminderState();
-  
+
   if (!settings.enabled) {
     return '（リマインドは無効です）';
   }
-  
+
   const today = new Date();
   const todayStr = getTodayString();
-  
+
   // Check if snoozed (minute-based)
   if (state && state.snoozeUntil) {
     const snoozeTime = new Date(state.snoozeUntil);
@@ -498,7 +576,7 @@ function getNextTaskOrgReminderTiming() {
       return formatReminderDateTime(snoozeTime) + ' 頃';
     }
   }
-  
+
   // Check if remind tomorrow flag is set
   if (state && state.remindTomorrow) {
     if (state.remindTomorrow >= todayStr) {
@@ -506,24 +584,24 @@ function getNextTaskOrgReminderTiming() {
       return formatReminderDateWithDay(remindDate) + ' の最初のアクセス時';
     }
   }
-  
+
   // Check target day
   const targetDay = getMostRecentTargetDay(settings.dayOfWeek);
   const todayDate = new Date(today);
   todayDate.setHours(0, 0, 0, 0);
-  
+
   // Check if completed this week
   if (state && state.completedDate) {
     const completedDate = new Date(state.completedDate);
     completedDate.setHours(0, 0, 0, 0);
-    
+
     if (completedDate >= targetDay) {
       // Completed this week, next reminder is next week's target day
       const nextTarget = getNextTargetDay(settings.dayOfWeek);
       return formatReminderDateWithDay(nextTarget) + ' の最初のアクセス時';
     }
   }
-  
+
   // Not completed - check if today is target day or later
   if (todayDate >= targetDay) {
     // Today or past target day, should show today
@@ -537,17 +615,17 @@ function getNextTaskOrgReminderTiming() {
 // Check if we should show task organization reminder
 function shouldShowTaskOrgReminder() {
   const settings = getTaskOrgReminderSettings();
-  
+
   // Check if reminder is enabled
   if (!settings.enabled) {
     return false;
   }
-  
+
   const state = getTaskOrgReminderState();
   const today = new Date();
   today.setHours(0, 0, 0, 0);
   const todayString = getTodayString();
-  
+
   // Check if snooze is active
   if (state && state.snoozeUntil) {
     const snoozeTime = new Date(state.snoozeUntil);
@@ -555,7 +633,7 @@ function shouldShowTaskOrgReminder() {
       return false; // Still snoozed
     }
   }
-  
+
   // Check if remind tomorrow flag is set
   if (state && state.remindTomorrow) {
     // If remindTomorrow is today, show the reminder
@@ -568,21 +646,21 @@ function shouldShowTaskOrgReminder() {
     }
     // If remindTomorrow is in the past, clear it and continue with normal logic
   }
-  
+
   // Get the most recent target day
   const targetDay = getMostRecentTargetDay(settings.dayOfWeek);
-  
+
   // Check if already completed this week
   if (state && state.completedDate) {
     const completedDate = new Date(state.completedDate);
     completedDate.setHours(0, 0, 0, 0);
-    
+
     // If completed on or after the most recent target day, don't show reminder
     if (completedDate >= targetDay) {
       return false;
     }
   }
-  
+
   // Show reminder if today is the target day or later (and not completed)
   return today >= targetDay;
 }
@@ -590,7 +668,7 @@ function shouldShowTaskOrgReminder() {
 // Show task organization reminder popup
 function showTaskOrgReminderPopup() {
   const settings = getTaskOrgReminderSettings();
-  
+
   const overlay = document.createElement('div');
   overlay.className = 'task-org-reminder-overlay';
   overlay.style.cssText = `
@@ -603,7 +681,7 @@ function showTaskOrgReminderPopup() {
     padding: 16px;
     z-index: 10000;
   `;
-  
+
   const dialog = document.createElement('div');
   dialog.className = 'task-org-reminder-dialog';
   dialog.style.cssText = `
@@ -616,22 +694,22 @@ function showTaskOrgReminderPopup() {
     max-height: 80vh;
     overflow-y: auto;
   `;
-  
+
   const title = document.createElement('h2');
   title.textContent = 'タスク整理 リマインド';
   title.style.cssText = 'margin: 0 0 16px 0; font-size: 18px; color: #2a7bd6; font-weight: 600;';
-  
+
   const procedureContainer = document.createElement('div');
   procedureContainer.style.cssText = 'margin: 0 0 20px 0; padding: 12px; background: #f9f9f9; border-radius: 4px; white-space: pre-wrap; line-height: 1.6; font-size: 14px; color: #333;';
   procedureContainer.textContent = settings.procedure || 'タスク整理を実施してください。';
-  
+
   const snoozeContainer = document.createElement('div');
   snoozeContainer.style.cssText = 'margin-bottom: 16px;';
-  
+
   const snoozeLabel = document.createElement('label');
   snoozeLabel.textContent = '再通知時間：';
   snoozeLabel.style.cssText = 'display: block; font-size: 13px; margin-bottom: 6px; color: #555;';
-  
+
   const snoozeSelect = document.createElement('select');
   snoozeSelect.style.cssText = 'width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px; font-size: 13px;';
   snoozeSelect.innerHTML = `
@@ -640,13 +718,13 @@ function showTaskOrgReminderPopup() {
     <option value="60">60分後</option>
     <option value="tomorrow">明日</option>
   `;
-  
+
   snoozeContainer.appendChild(snoozeLabel);
   snoozeContainer.appendChild(snoozeSelect);
-  
+
   const buttons = document.createElement('div');
   buttons.style.cssText = 'display: flex; justify-content: flex-end; gap: 8px; flex-wrap: wrap;';
-  
+
   const snoozeBtn = document.createElement('button');
   snoozeBtn.textContent = '再通知';
   snoozeBtn.style.cssText = `
@@ -658,7 +736,7 @@ function showTaskOrgReminderPopup() {
     cursor: pointer;
     font-size: 14px;
   `;
-  
+
   const completeBtn = document.createElement('button');
   completeBtn.textContent = '整理完了';
   completeBtn.style.cssText = `
@@ -670,20 +748,20 @@ function showTaskOrgReminderPopup() {
     cursor: pointer;
     font-size: 14px;
   `;
-  
+
   snoozeBtn.onclick = () => {
     const selectedValue = snoozeSelect.value;
     if (selectedValue === 'tomorrow') {
       const tomorrow = new Date();
       tomorrow.setDate(tomorrow.getDate() + 1);
       const tomorrowString = tomorrow.toISOString().split('T')[0];
-      
+
       saveTaskOrgReminderState({
         snoozeUntil: null,
         completedDate: null,
         remindTomorrow: tomorrowString
       });
-      
+
       if (taskOrgReminderSnoozeTimer) {
         clearTimeout(taskOrgReminderSnoozeTimer);
         taskOrgReminderSnoozeTimer = null;
@@ -692,13 +770,13 @@ function showTaskOrgReminderPopup() {
       const minutes = parseInt(selectedValue, 10);
       const snoozeUntil = new Date();
       snoozeUntil.setMinutes(snoozeUntil.getMinutes() + minutes);
-      
+
       saveTaskOrgReminderState({
         snoozeUntil: snoozeUntil.toISOString(),
         completedDate: null,
         remindTomorrow: null
       });
-      
+
       // Set timer to show popup again
       if (taskOrgReminderSnoozeTimer) {
         clearTimeout(taskOrgReminderSnoozeTimer);
@@ -707,35 +785,35 @@ function showTaskOrgReminderPopup() {
         checkTaskOrgReminder();
       }, minutes * 60 * 1000);
     }
-    
+
     overlay.remove();
   };
-  
+
   completeBtn.onclick = () => {
     saveTaskOrgReminderState({
       completedDate: getTodayString(),
       snoozeUntil: null,
       remindTomorrow: null
     });
-    
+
     if (taskOrgReminderSnoozeTimer) {
       clearTimeout(taskOrgReminderSnoozeTimer);
       taskOrgReminderSnoozeTimer = null;
     }
-    
+
     overlay.remove();
   };
-  
+
   buttons.appendChild(snoozeBtn);
   buttons.appendChild(completeBtn);
-  
+
   dialog.appendChild(title);
   dialog.appendChild(procedureContainer);
   dialog.appendChild(snoozeContainer);
   dialog.appendChild(buttons);
   overlay.appendChild(dialog);
   document.body.appendChild(overlay);
-  
+
   // Allow closing with Escape
   const handleEscape = (e) => {
     if (e.key === 'Escape') {
@@ -751,7 +829,7 @@ function checkTaskOrgReminder() {
   if (!shouldShowTaskOrgReminder()) {
     return;
   }
-  
+
   showTaskOrgReminderPopup();
 }
 
@@ -762,7 +840,7 @@ function resetTaskOrgReminderState() {
     snoozeUntil: null,
     remindTomorrow: null
   });
-  
+
   if (taskOrgReminderSnoozeTimer) {
     clearTimeout(taskOrgReminderSnoozeTimer);
     taskOrgReminderSnoozeTimer = null;
@@ -773,35 +851,35 @@ function resetTaskOrgReminderState() {
 function getTaskOrgReminderStatus() {
   const settings = getTaskOrgReminderSettings();
   const state = getTaskOrgReminderState();
-  
+
   if (!settings.enabled) {
     return { enabled: false, status: '無効' };
   }
-  
+
   const snoozed = state && state.snoozeUntil && new Date(state.snoozeUntil) > new Date();
-  
+
   if (snoozed) {
     return {
       enabled: true,
       status: 'スヌーズ中'
     };
   }
-  
+
   if (state && state.completedDate) {
     const settings = getTaskOrgReminderSettings();
     const targetDay = getMostRecentTargetDay(settings.dayOfWeek);
     const completedDate = new Date(state.completedDate);
     completedDate.setHours(0, 0, 0, 0);
-    
+
     if (completedDate >= targetDay) {
       return { enabled: true, status: '今週完了済み' };
     }
   }
-  
+
   if (state && state.remindTomorrow) {
     return { enabled: true, status: '明日再通知予定' };
   }
-  
+
   return { enabled: true, status: '未完了' };
 }
 
@@ -850,12 +928,12 @@ function ensureGTDProcedureTooltip() {
 
 function showGTDProcedureTooltip(element) {
   if (!element) return;
-  
+
   const procedureText = getGTDProcedure();
   if (!procedureText || procedureText.trim() === '') {
     return; // Don't show tooltip if no procedure is set
   }
-  
+
   const tooltip = ensureGTDProcedureTooltip();
   currentGTDProcedureTooltipTarget = element;
   tooltip.classList.remove('visible');
@@ -877,7 +955,7 @@ function showGTDProcedureTooltip(element) {
   if (left < window.scrollX + margin) {
     left = window.scrollX + margin;
   }
-  
+
   let top = rect.bottom + window.scrollY + margin;
   // If tooltip would go below viewport, show it above the element instead
   if (top + tooltipRect.height > window.scrollY + viewportHeight) {
@@ -929,7 +1007,7 @@ function saveGTDReminderState(state) {
 function shouldShowGTDReminder() {
   const state = getGTDReminderState();
   const today = getTodayString();
-  
+
   // Check if snooze is active
   if (state && state.snoozeUntil) {
     const snoozeTime = new Date(state.snoozeUntil);
@@ -937,12 +1015,12 @@ function shouldShowGTDReminder() {
       return false; // Still snoozed
     }
   }
-  
+
   // Check if already done for today
   if (state && state.lastDate === today && state.doneForToday) {
     return false;
   }
-  
+
   return true;
 }
 
@@ -950,26 +1028,26 @@ function shouldShowGTDReminder() {
 function getGTDHeadingsWithContent() {
   const gtdHeadings = items.filter(item => item.type === 'gtd-heading');
   const result = [];
-  
+
   for (const heading of gtdHeadings) {
     const headingIndex = items.indexOf(heading);
     const contentItems = [];
-    
+
     // Find content between this heading and the next heading/hr
     for (let i = headingIndex + 1; i < items.length; i++) {
       const item = items[i];
-      if (item.type === 'heading' || item.type === 'collapsible-heading' || 
-          item.type === 'gtd-heading' || item.type === 'hr') {
+      if (item.type === 'heading' || item.type === 'collapsible-heading' ||
+        item.type === 'gtd-heading' || item.type === 'hr') {
         break;
       }
-      
+
       // Check if item has non-empty content
       const text = (item.text || '').trim();
       if (text.length > 0) {
         contentItems.push(item);
       }
     }
-    
+
     if (contentItems.length > 0) {
       result.push({
         heading,
@@ -981,7 +1059,7 @@ function getGTDHeadingsWithContent() {
       });
     }
   }
-  
+
   return result;
 }
 
@@ -990,12 +1068,12 @@ function checkGTDReminders() {
   if (!shouldShowGTDReminder()) {
     return;
   }
-  
+
   const headingsWithContent = getGTDHeadingsWithContent();
   if (headingsWithContent.length === 0) {
     return;
   }
-  
+
   showGTDReminderPopup(headingsWithContent);
 }
 
@@ -1013,7 +1091,7 @@ function showGTDReminderPopup(headingsWithContent) {
     padding: 16px;
     z-index: 10000;
   `;
-  
+
   const dialog = document.createElement('div');
   dialog.className = 'gtd-reminder-dialog';
   dialog.style.cssText = `
@@ -1026,33 +1104,33 @@ function showGTDReminderPopup(headingsWithContent) {
     max-height: 80vh;
     overflow-y: auto;
   `;
-  
+
   const title = document.createElement('h2');
   title.textContent = '⚠️ GTDリマインダー';
   title.style.cssText = 'margin: 0 0 16px 0; font-size: 18px; color: #2a7bd6; font-weight: 600;';
-  
+
   const message = document.createElement('p');
   message.textContent = '以下のGTD見出しにタスクが残っています：';
   message.style.cssText = 'margin: 0 0 16px 0; font-size: 14px; color: #333;';
-  
+
   const list = document.createElement('div');
   list.style.cssText = 'margin: 0 0 20px 0;';
-  
+
   headingsWithContent.forEach(({ heading, contentItems, preview }) => {
     const itemDiv = document.createElement('div');
     itemDiv.style.cssText = 'margin-bottom: 12px; padding: 12px; background: #f9f9f9; border-radius: 4px; border-left: 3px solid #4aa3ff;';
-    
+
     const headingText = document.createElement('div');
     headingText.textContent = heading.text || '(無題)';
     headingText.style.cssText = 'font-weight: 600; color: #2a7bd6; margin-bottom: 6px; font-size: 14px;';
-    
+
     const countText = document.createElement('div');
     countText.textContent = `${contentItems.length}件のタスク`;
     countText.style.cssText = 'font-size: 12px; color: #666; margin-bottom: 6px;';
-    
+
     itemDiv.appendChild(headingText);
     itemDiv.appendChild(countText);
-    
+
     if (preview.length > 0) {
       const previewDiv = document.createElement('div');
       previewDiv.style.cssText = 'font-size: 12px; color: #888; margin-top: 6px;';
@@ -1064,17 +1142,17 @@ function showGTDReminderPopup(headingsWithContent) {
       });
       itemDiv.appendChild(previewDiv);
     }
-    
+
     list.appendChild(itemDiv);
   });
-  
+
   const snoozeContainer = document.createElement('div');
   snoozeContainer.style.cssText = 'margin-bottom: 16px;';
-  
+
   const snoozeLabel = document.createElement('label');
   snoozeLabel.textContent = '再通知時間：';
   snoozeLabel.style.cssText = 'display: block; font-size: 13px; margin-bottom: 6px; color: #555;';
-  
+
   const snoozeSelect = document.createElement('select');
   snoozeSelect.style.cssText = 'width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px; font-size: 13px;';
   snoozeSelect.innerHTML = `
@@ -1082,13 +1160,13 @@ function showGTDReminderPopup(headingsWithContent) {
     <option value="10">10分後</option>
     <option value="60">60分後</option>
   `;
-  
+
   snoozeContainer.appendChild(snoozeLabel);
   snoozeContainer.appendChild(snoozeSelect);
-  
+
   const buttons = document.createElement('div');
   buttons.style.cssText = 'display: flex; justify-content: flex-end; gap: 8px;';
-  
+
   const snoozeBtn = document.createElement('button');
   snoozeBtn.textContent = '再通知';
   snoozeBtn.style.cssText = `
@@ -1100,7 +1178,7 @@ function showGTDReminderPopup(headingsWithContent) {
     cursor: pointer;
     font-size: 14px;
   `;
-  
+
   const okBtn = document.createElement('button');
   okBtn.textContent = '今日はもう表示しない';
   okBtn.style.cssText = `
@@ -1112,18 +1190,18 @@ function showGTDReminderPopup(headingsWithContent) {
     cursor: pointer;
     font-size: 14px;
   `;
-  
+
   snoozeBtn.onclick = () => {
     const minutes = parseInt(snoozeSelect.value);
     const snoozeUntil = new Date();
     snoozeUntil.setMinutes(snoozeUntil.getMinutes() + minutes);
-    
+
     saveGTDReminderState({
       lastDate: getTodayString(),
       doneForToday: false,
       snoozeUntil: snoozeUntil.toISOString()
     });
-    
+
     // Set timer to show popup again
     if (gtdReminderSnoozeTimer) {
       clearTimeout(gtdReminderSnoozeTimer);
@@ -1131,28 +1209,28 @@ function showGTDReminderPopup(headingsWithContent) {
     gtdReminderSnoozeTimer = setTimeout(() => {
       checkGTDReminders();
     }, minutes * 60 * 1000);
-    
+
     overlay.remove();
   };
-  
+
   okBtn.onclick = () => {
     saveGTDReminderState({
       lastDate: getTodayString(),
       doneForToday: true,
       snoozeUntil: null
     });
-    
+
     if (gtdReminderSnoozeTimer) {
       clearTimeout(gtdReminderSnoozeTimer);
       gtdReminderSnoozeTimer = null;
     }
-    
+
     overlay.remove();
   };
-  
+
   buttons.appendChild(snoozeBtn);
   buttons.appendChild(okBtn);
-  
+
   dialog.appendChild(title);
   dialog.appendChild(message);
   dialog.appendChild(list);
@@ -1160,7 +1238,7 @@ function showGTDReminderPopup(headingsWithContent) {
   dialog.appendChild(buttons);
   overlay.appendChild(dialog);
   document.body.appendChild(overlay);
-  
+
   // Allow closing with Escape
   const handleEscape = (e) => {
     if (e.key === 'Escape') {
@@ -1178,7 +1256,7 @@ function resetGTDReminderState() {
     doneForToday: false,
     snoozeUntil: null
   });
-  
+
   if (gtdReminderSnoozeTimer) {
     clearTimeout(gtdReminderSnoozeTimer);
     gtdReminderSnoozeTimer = null;
@@ -1189,14 +1267,14 @@ function resetGTDReminderState() {
 function getGTDReminderStatus() {
   const state = getGTDReminderState();
   const today = getTodayString();
-  
+
   if (!state) {
     return { doneForToday: false, lastDate: null, snoozed: false };
   }
-  
+
   const snoozed = state.snoozeUntil && new Date(state.snoozeUntil) > new Date();
   const doneForToday = state.lastDate === today && state.doneForToday;
-  
+
   return {
     doneForToday,
     lastDate: state.lastDate,
@@ -1209,7 +1287,7 @@ function getGTDReminderStatus() {
 function initializeApp() {
   loadPresets();
   loadItems();
-  
+
   // Setup reorder toggle button if not already set up
   const toggleBtn = document.getElementById('reorderToggle');
   if (toggleBtn && !toggleBtn.hasAttribute('data-initialized')) {
@@ -1217,23 +1295,23 @@ function initializeApp() {
     toggleBtn.addEventListener('click', toggleReorderMode);
     toggleBtn.setAttribute('data-initialized', 'true');
   }
-  
+
   // Setup settings button if not already set up
   const settingsBtn = document.getElementById('settingsToggle');
   if (settingsBtn && !settingsBtn.hasAttribute('data-initialized')) {
     settingsBtn.addEventListener('click', showSettingsDialog);
     settingsBtn.setAttribute('data-initialized', 'true');
   }
-  
+
   // Restore snooze timer if there's an active snooze
   const state = getGTDReminderState();
   let hasActiveGTDSnooze = false;
-  
+
   if (state && state.snoozeUntil) {
     const snoozeTime = new Date(state.snoozeUntil);
     const now = new Date();
     const remainingMs = snoozeTime - now;
-    
+
     if (remainingMs > 0) {
       // Snooze is still active, set timer for remaining time
       hasActiveGTDSnooze = true;
@@ -1245,7 +1323,7 @@ function initializeApp() {
       }, remainingMs);
     }
   }
-  
+
   // Check GTD reminders after a short delay to ensure items are loaded
   // BUT only if there's no active snooze
   if (!hasActiveGTDSnooze) {
@@ -1253,16 +1331,16 @@ function initializeApp() {
       checkGTDReminders();
     }, 1000);
   }
-  
+
   // Restore task organization snooze timer if there's an active snooze
   const taskOrgState = getTaskOrgReminderState();
   let hasActiveTaskOrgSnooze = false;
-  
+
   if (taskOrgState && taskOrgState.snoozeUntil) {
     const snoozeTime = new Date(taskOrgState.snoozeUntil);
     const now = new Date();
     const remainingMs = snoozeTime - now;
-    
+
     if (remainingMs > 0) {
       // Snooze is still active, set timer for remaining time
       hasActiveTaskOrgSnooze = true;
@@ -1274,7 +1352,7 @@ function initializeApp() {
       }, remainingMs);
     }
   }
-  
+
   // Check task organization reminder after a short delay
   // BUT only if there's no active snooze
   if (!hasActiveTaskOrgSnooze) {
@@ -1288,7 +1366,7 @@ function initializeApp() {
 function showPasswordPrompt(callback) {
   if (authDialogShown) return;
   authDialogShown = true;
-  
+
   const overlay = document.createElement('div');
   overlay.className = 'auth-dialog-overlay';
   overlay.style.cssText = `
@@ -1303,7 +1381,7 @@ function showPasswordPrompt(callback) {
     justify-content: center;
     z-index: 10000;
   `;
-  
+
   const dialog = document.createElement('div');
   dialog.className = 'auth-dialog';
   dialog.style.cssText = `
@@ -1314,15 +1392,15 @@ function showPasswordPrompt(callback) {
     max-width: 400px;
     width: 90%;
   `;
-  
+
   const title = document.createElement('h2');
   title.textContent = 'パスワード認証';
   title.style.cssText = 'margin: 0 0 12px; font-size: 16px; text-align: center; color: #1e3a5f;';
-  
+
   const message = document.createElement('p');
   message.textContent = 'このデータベースにはパスワードが設定されています。パスワードを入力してください。';
   message.style.cssText = 'margin: 0 0 16px 0; color: #666; font-size: 14px;';
-  
+
   const input = document.createElement('input');
   input.type = 'password';
   input.placeholder = 'パスワード';
@@ -1335,13 +1413,13 @@ function showPasswordPrompt(callback) {
     box-sizing: border-box;
     margin-bottom: 16px;
   `;
-  
+
   const error = document.createElement('div');
   error.style.cssText = 'color: #d00; font-size: 13px; margin-bottom: 16px; min-height: 20px;';
-  
+
   const buttons = document.createElement('div');
   buttons.style.cssText = 'display: flex; justify-content: flex-end; gap: 8px;';
-  
+
   const submitBtn = document.createElement('button');
   submitBtn.textContent = 'ログイン';
   submitBtn.style.cssText = `
@@ -1353,21 +1431,21 @@ function showPasswordPrompt(callback) {
     cursor: pointer;
     font-size: 14px;
   `;
-  
+
   submitBtn.onclick = async () => {
     const password = input.value;
     if (!password) {
       error.textContent = 'パスワードを入力してください';
       return;
     }
-    
+
     try {
       const response = await fetch(addUIDToURL('api.php?action=auth'), {
         method: 'POST',
-        headers: {'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8'},
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8' },
         body: new URLSearchParams({ password })
       });
-      
+
       if (response.ok) {
         overlay.remove();
         authDialogShown = false;
@@ -1382,13 +1460,13 @@ function showPasswordPrompt(callback) {
       error.textContent = '認証エラーが発生しました';
     }
   };
-  
+
   input.addEventListener('keydown', (e) => {
     if (e.key === 'Enter') {
       submitBtn.click();
     }
   });
-  
+
   buttons.appendChild(submitBtn);
   dialog.appendChild(title);
   dialog.appendChild(message);
@@ -1397,7 +1475,7 @@ function showPasswordPrompt(callback) {
   dialog.appendChild(buttons);
   overlay.appendChild(dialog);
   document.body.appendChild(overlay);
-  
+
   setTimeout(() => input.focus(), 100);
 }
 
@@ -1424,7 +1502,7 @@ function showSettingsDialog() {
     justify-content: center;
     z-index: 10000;
   `;
-  
+
   const dialog = document.createElement('div');
   dialog.className = 'settings-dialog';
   dialog.style.cssText = `
@@ -1437,42 +1515,42 @@ function showSettingsDialog() {
     overflow-y: auto;
     box-sizing: border-box;
   `;
-  
-const title = document.createElement('h2');
-title.textContent = '設定';
-title.style.cssText = 'margin: 0 0 12px; font-size: 16px; text-align: center;';
-  
+
+  const title = document.createElement('h2');
+  title.textContent = '設定';
+  title.style.cssText = 'margin: 0 0 12px; font-size: 16px; text-align: center;';
+
   const uidSection = document.createElement('div');
   uidSection.style.cssText = 'margin-bottom: 14px; padding: 10px 12px; background: #f4f7fb; border-radius: 6px;';
-  
+
   const uidLabel = document.createElement('div');
   uidLabel.textContent = 'ログイン中のユーザーID';
   uidLabel.style.cssText = 'font-size: 12px; color: #556378; margin-bottom: 4px;';
-  
+
   const uidValue = document.createElement('div');
   uidValue.textContent = userID;
   uidValue.style.cssText = 'font-family: "SFMono-Regular", Consolas, monospace; font-size: 13px; color: #1e3a5f; word-break: break-all;';
   uidSection.appendChild(uidLabel);
   uidSection.appendChild(uidValue);
-  
+
   const createSectionDivider = () => {
     const divider = document.createElement('div');
     divider.style.cssText = 'height: 1px; background: #e5e5e5; margin: 12px 0;';
     return divider;
   };
-  
-  
+
+
   const passwordSection = document.createElement('div');
   passwordSection.style.cssText = 'margin-bottom: 4px;';
-  
+
   const passwordTitle = document.createElement('h3');
   passwordTitle.textContent = 'パスワード変更';
   passwordTitle.style.cssText = 'margin: 0 0 8px; font-size: 14px; color: #1e3a5f;';
-  
+
   const currentPasswordLabel = document.createElement('label');
   currentPasswordLabel.textContent = '現在のパスワード';
   currentPasswordLabel.style.cssText = 'display: block; font-size: 12px; margin-bottom: 3px; color: #4d5a6f;';
-  
+
   const currentPasswordInput = document.createElement('input');
   currentPasswordInput.type = 'password';
   currentPasswordInput.placeholder = '現在のパスワード';
@@ -1485,11 +1563,11 @@ title.style.cssText = 'margin: 0 0 12px; font-size: 16px; text-align: center;';
     box-sizing: border-box;
     margin-bottom: 8px;
   `;
-  
+
   const newPasswordLabel = document.createElement('label');
   newPasswordLabel.textContent = '新しいパスワード';
   newPasswordLabel.style.cssText = 'display: block; font-size: 12px; margin-bottom: 3px; color: #4d5a6f;';
-  
+
   const newPasswordInput = document.createElement('input');
   newPasswordInput.type = 'password';
   newPasswordInput.placeholder = '新しいパスワード';
@@ -1502,10 +1580,10 @@ title.style.cssText = 'margin: 0 0 12px; font-size: 16px; text-align: center;';
     box-sizing: border-box;
     margin-bottom: 8px;
   `;
-  
+
   const passwordMessage = document.createElement('div');
   passwordMessage.style.cssText = 'font-size: 12px; margin-top: 6px; margin-bottom: 0; min-height: 16px; color: #d53f3f;';
-  
+
   const setPasswordBtn = document.createElement('button');
   setPasswordBtn.textContent = 'パスワードを変更';
   setPasswordBtn.style.cssText = `
@@ -1522,31 +1600,31 @@ title.style.cssText = 'margin: 0 0 12px; font-size: 16px; text-align: center;';
     transition: background-color 0.15s ease, box-shadow 0.15s ease;
     margin-bottom: 4px;
   `;
-  
+
   setPasswordBtn.onclick = async () => {
     const currentPassword = currentPasswordInput.value;
     const newPassword = newPasswordInput.value;
-    
+
     if (!newPassword) {
       passwordMessage.style.color = '#d53f3f';
       passwordMessage.textContent = '新しいパスワードを入力してください';
       return;
     }
-    
+
     try {
       const params = new URLSearchParams({ newpass: newPassword });
       if (currentPassword) {
         params.append('current', currentPassword);
       }
-      
+
       const response = await fetch(addUIDToURL('api.php?action=set_password'), {
         method: 'POST',
-        headers: {'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8'},
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8' },
         body: params
       });
-      
+
       const data = await response.json();
-      
+
       if (response.ok) {
         passwordMessage.style.color = '#249944';
         passwordMessage.textContent = 'パスワードが設定されました';
@@ -1562,7 +1640,7 @@ title.style.cssText = 'margin: 0 0 12px; font-size: 16px; text-align: center;';
       passwordMessage.textContent = 'パスワード設定エラーが発生しました';
     }
   };
-  
+
   passwordSection.appendChild(passwordTitle);
   passwordSection.appendChild(currentPasswordLabel);
   passwordSection.appendChild(currentPasswordInput);
@@ -1572,19 +1650,19 @@ title.style.cssText = 'margin: 0 0 12px; font-size: 16px; text-align: center;';
   passwordSection.appendChild(passwordMessage);
   const passwordDivider = createSectionDivider();
   passwordSection.appendChild(passwordDivider);
-  
+
   // GTD Reminder Section
   const gtdSection = document.createElement('div');
   gtdSection.style.cssText = 'margin-bottom: 12px;';
-  
+
   const gtdTitle = document.createElement('h3');
   gtdTitle.textContent = 'GTD見出しリマインド';
   gtdTitle.style.cssText = 'margin: 0 0 8px; font-size: 14px; color: #1e3a5f;';
-  
+
   const gtdStatus = getGTDReminderStatus();
   const gtdStatusText = document.createElement('div');
   gtdStatusText.style.cssText = 'font-size: 13px; color: #666; margin-bottom: 0; padding: 8px; background: #f9f9f9; border-radius: 4px;';
-  
+
   let statusMsg = '';
   if (gtdStatus.snoozed) {
     statusMsg = 'スヌーズ中';
@@ -1594,13 +1672,13 @@ title.style.cssText = 'margin: 0 0 12px; font-size: 16px; text-align: center;';
     statusMsg = '未リマインド';
   }
   gtdStatusText.textContent = `状態: ${statusMsg}`;
-  
+
   // Add next reminder timing display
   const gtdNextTiming = document.createElement('div');
   gtdNextTiming.style.cssText = 'font-size: 13px; color: #666; margin-bottom: 8px; padding: 8px; background: #f9f9f9; border-radius: 4px; margin-top: -4px; padding-top: 4px;';
   const nextTimingText = getNextGTDReminderTiming();
   gtdNextTiming.textContent = `次回リマインド予定: ${nextTimingText}`;
-  
+
   const gtdResetBtn = document.createElement('button');
   gtdResetBtn.textContent = 'リマインド状態をリセット';
   gtdResetBtn.style.cssText = `
@@ -1616,10 +1694,10 @@ title.style.cssText = 'margin: 0 0 12px; font-size: 16px; text-align: center;';
     box-shadow: 0 2px 6px rgba(74, 144, 226, 0.25);
     transition: background-color 0.15s ease, box-shadow 0.15s ease;
   `;
-  
+
   const gtdResetSuccess = document.createElement('div');
   gtdResetSuccess.style.cssText = 'color: #249944; font-size: 12px; margin-top: 6px; min-height: 16px;';
-  
+
   gtdResetBtn.onclick = () => {
     resetGTDReminderState();
     gtdResetSuccess.textContent = 'リセットしました。次回アクセス時に再チェックされます。';
@@ -1629,7 +1707,7 @@ title.style.cssText = 'margin: 0 0 12px; font-size: 16px; text-align: center;';
       gtdResetSuccess.textContent = '';
     }, 3000);
   };
-  
+
   gtdSection.appendChild(gtdTitle);
   gtdSection.appendChild(gtdStatusText);
   gtdSection.appendChild(gtdNextTiming);
@@ -1637,11 +1715,11 @@ title.style.cssText = 'margin: 0 0 12px; font-size: 16px; text-align: center;';
   gtdSection.appendChild(gtdResetSuccess);
   const gtdDivider = createSectionDivider();
   gtdSection.appendChild(gtdDivider);
-  
+
   // GTD Processing Procedure Section
   const gtdProcedureSection = document.createElement('div');
   gtdProcedureSection.style.cssText = 'margin-bottom: 12px;';
-  
+
   const gtdProcedureTitle = document.createElement('h3');
   gtdProcedureTitle.textContent = 'GTD処理手順';
   gtdProcedureTitle.style.cssText = 'margin: 0 0 8px; font-size: 14px; color: #1e3a5f;';
@@ -1649,7 +1727,7 @@ title.style.cssText = 'margin: 0 0 12px; font-size: 16px; text-align: center;';
   const gtdProcedureNote = document.createElement('div');
   gtdProcedureNote.textContent = 'GTD見出しアイコンにマウスホバーすると、この内容を表示します。';
   gtdProcedureNote.style.cssText = 'font-size: 12px; color: #6b778c; margin: -4px 0 8px;';
-  
+
   const gtdProcedureTextarea = document.createElement('textarea');
   gtdProcedureTextarea.placeholder = 'GTD見出しのアイコンをホバーした際に表示される処理手順を入力してください';
   gtdProcedureTextarea.style.cssText = `
@@ -1665,11 +1743,11 @@ title.style.cssText = 'margin: 0 0 12px; font-size: 16px; text-align: center;';
     resize: vertical;
     line-height: 1.5;
   `;
-  
+
   // Load saved GTD procedure from localStorage
   const savedProcedure = getGTDProcedure();
   gtdProcedureTextarea.value = savedProcedure || '';
-  
+
   const gtdProcedureSaveBtn = document.createElement('button');
   gtdProcedureSaveBtn.textContent = '保存';
   gtdProcedureSaveBtn.style.cssText = `
@@ -1685,10 +1763,10 @@ title.style.cssText = 'margin: 0 0 12px; font-size: 16px; text-align: center;';
     box-shadow: 0 2px 6px rgba(74, 144, 226, 0.25);
     transition: background-color 0.15s ease, box-shadow 0.15s ease;
   `;
-  
+
   const gtdProcedureSaveSuccess = document.createElement('div');
   gtdProcedureSaveSuccess.style.cssText = 'color: #249944; font-size: 12px; margin-top: 6px; min-height: 16px;';
-  
+
   gtdProcedureSaveBtn.onclick = () => {
     const procedureText = gtdProcedureTextarea.value;
     saveGTDProcedure(procedureText);
@@ -1697,7 +1775,7 @@ title.style.cssText = 'margin: 0 0 12px; font-size: 16px; text-align: center;';
       gtdProcedureSaveSuccess.textContent = '';
     }, 3000);
   };
-  
+
   gtdProcedureSection.appendChild(gtdProcedureTitle);
   gtdProcedureSection.appendChild(gtdProcedureNote);
   gtdProcedureSection.appendChild(gtdProcedureTextarea);
@@ -1705,43 +1783,43 @@ title.style.cssText = 'margin: 0 0 12px; font-size: 16px; text-align: center;';
   gtdProcedureSection.appendChild(gtdProcedureSaveSuccess);
   const gtdProcedureDivider = createSectionDivider();
   gtdProcedureSection.appendChild(gtdProcedureDivider);
-  
+
   // Task Organization Reminder Section
   const taskOrgSection = document.createElement('div');
   taskOrgSection.style.cssText = 'margin-bottom: 12px;';
-  
+
   const taskOrgTitle = document.createElement('h3');
   taskOrgTitle.textContent = 'タスク整理リマインド';
   taskOrgTitle.style.cssText = 'margin: 0 0 8px; font-size: 14px; color: #1e3a5f;';
-  
+
   const taskOrgDescription = document.createElement('div');
   taskOrgDescription.textContent = '指定した曜日にアプリ起動時にタスク整理を促します。整理手順を自由に書いておくと、毎週同じ流れで見直しができます。';
   taskOrgDescription.style.cssText = 'font-size: 12px; color: #6b778c; margin: -4px 0 12px; line-height: 1.5;';
-  
+
   const taskOrgSettings = getTaskOrgReminderSettings();
-  
+
   // Enable/Disable toggle
   const taskOrgEnableContainer = document.createElement('div');
   taskOrgEnableContainer.style.cssText = 'margin-bottom: 12px; display: flex; align-items: center; gap: 8px;';
-  
+
   const taskOrgEnableCheckbox = document.createElement('input');
   taskOrgEnableCheckbox.type = 'checkbox';
   taskOrgEnableCheckbox.id = 'taskOrgEnableCheckbox';
   taskOrgEnableCheckbox.checked = taskOrgSettings.enabled;
-  
+
   const taskOrgEnableLabel = document.createElement('label');
   taskOrgEnableLabel.htmlFor = 'taskOrgEnableCheckbox';
   taskOrgEnableLabel.textContent = 'リマインドを有効にする';
   taskOrgEnableLabel.style.cssText = 'font-size: 13px; color: #1e3a5f; cursor: pointer;';
-  
+
   taskOrgEnableContainer.appendChild(taskOrgEnableCheckbox);
   taskOrgEnableContainer.appendChild(taskOrgEnableLabel);
-  
+
   // Day of week selector
   const taskOrgDayLabel = document.createElement('label');
   taskOrgDayLabel.textContent = 'リマインド曜日';
   taskOrgDayLabel.style.cssText = 'display: block; font-size: 12px; margin-bottom: 3px; color: #4d5a6f;';
-  
+
   const taskOrgDaySelect = document.createElement('select');
   taskOrgDaySelect.style.cssText = 'width: 100%; padding: 8px 12px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px; box-sizing: border-box; margin-bottom: 12px;';
   taskOrgDaySelect.innerHTML = `
@@ -1754,12 +1832,12 @@ title.style.cssText = 'margin: 0 0 12px; font-size: 16px; text-align: center;';
     <option value="6">土曜日</option>
   `;
   taskOrgDaySelect.value = taskOrgSettings.dayOfWeek.toString();
-  
+
   // Procedure text
   const taskOrgProcedureLabel = document.createElement('label');
   taskOrgProcedureLabel.textContent = 'タスク整理手順';
   taskOrgProcedureLabel.style.cssText = 'display: block; font-size: 12px; margin-bottom: 3px; color: #4d5a6f;';
-  
+
   const taskOrgProcedureTextarea = document.createElement('textarea');
   taskOrgProcedureTextarea.placeholder = 'タスク整理リマインド時に表示されるタスク整理手順を入力してください';
   taskOrgProcedureTextarea.style.cssText = `
@@ -1776,7 +1854,7 @@ title.style.cssText = 'margin: 0 0 12px; font-size: 16px; text-align: center;';
     line-height: 1.5;
   `;
   taskOrgProcedureTextarea.value = taskOrgSettings.procedure || '';
-  
+
   // Save button
   const taskOrgSaveBtn = document.createElement('button');
   taskOrgSaveBtn.textContent = '保存';
@@ -1794,10 +1872,10 @@ title.style.cssText = 'margin: 0 0 12px; font-size: 16px; text-align: center;';
     transition: background-color 0.15s ease, box-shadow 0.15s ease;
     margin-bottom: 8px;
   `;
-  
+
   const taskOrgSaveSuccess = document.createElement('div');
   taskOrgSaveSuccess.style.cssText = 'color: #249944; font-size: 12px; margin-top: 6px; margin-bottom: 8px; min-height: 16px;';
-  
+
   taskOrgSaveBtn.onclick = () => {
     const settings = {
       enabled: taskOrgEnableCheckbox.checked,
@@ -1810,19 +1888,19 @@ title.style.cssText = 'margin: 0 0 12px; font-size: 16px; text-align: center;';
       taskOrgSaveSuccess.textContent = '';
     }, 3000);
   };
-  
+
   // Status display
   const taskOrgStatus = getTaskOrgReminderStatus();
   const taskOrgStatusText = document.createElement('div');
   taskOrgStatusText.style.cssText = 'font-size: 13px; color: #666; margin-bottom: 0; padding: 8px; background: #f9f9f9; border-radius: 4px;';
   taskOrgStatusText.textContent = `状態: ${taskOrgStatus.status}`;
-  
+
   // Add next reminder timing display
   const taskOrgNextTiming = document.createElement('div');
   taskOrgNextTiming.style.cssText = 'font-size: 13px; color: #666; margin-bottom: 8px; padding: 8px; background: #f9f9f9; border-radius: 4px; margin-top: -4px; padding-top: 4px;';
   const taskOrgNextTimingText = getNextTaskOrgReminderTiming();
   taskOrgNextTiming.textContent = `次回リマインド予定: ${taskOrgNextTimingText}`;
-  
+
   // Reset button
   const taskOrgResetBtn = document.createElement('button');
   taskOrgResetBtn.textContent = 'リマインド状態をリセット';
@@ -1839,10 +1917,10 @@ title.style.cssText = 'margin: 0 0 12px; font-size: 16px; text-align: center;';
     box-shadow: 0 2px 6px rgba(74, 144, 226, 0.25);
     transition: background-color 0.15s ease, box-shadow 0.15s ease;
   `;
-  
+
   const taskOrgResetSuccess = document.createElement('div');
   taskOrgResetSuccess.style.cssText = 'color: #249944; font-size: 12px; margin-top: 6px; min-height: 16px;';
-  
+
   taskOrgResetBtn.onclick = () => {
     resetTaskOrgReminderState();
     taskOrgResetSuccess.textContent = 'リセットしました。次回アクセス時に再チェックされます。';
@@ -1852,7 +1930,7 @@ title.style.cssText = 'margin: 0 0 12px; font-size: 16px; text-align: center;';
       taskOrgResetSuccess.textContent = '';
     }, 3000);
   };
-  
+
   taskOrgSection.appendChild(taskOrgTitle);
   taskOrgSection.appendChild(taskOrgDescription);
   taskOrgSection.appendChild(taskOrgEnableContainer);
@@ -1866,10 +1944,10 @@ title.style.cssText = 'margin: 0 0 12px; font-size: 16px; text-align: center;';
   taskOrgSection.appendChild(taskOrgNextTiming);
   taskOrgSection.appendChild(taskOrgResetBtn);
   taskOrgSection.appendChild(taskOrgResetSuccess);
-  
+
   const actionButtons = document.createElement('div');
   actionButtons.style.cssText = 'display: flex; justify-content: space-between; gap: 8px; margin-top: 12px;';
-  
+
   const logoutBtn = document.createElement('button');
   logoutBtn.textContent = 'ログアウト';
   logoutBtn.style.cssText = `
@@ -1881,17 +1959,21 @@ title.style.cssText = 'margin: 0 0 12px; font-size: 16px; text-align: center;';
     cursor: pointer;
     font-size: 14px;
   `;
-  
-  logoutBtn.onclick = async () => {
+
+  logoutBtn.addEventListener('click', async (e) => {
+    e.preventDefault();
+    e.stopPropagation();
     try {
-      await fetch('api.php?action=logout', { method: 'POST' });
+      // Don't clear the remember cookie - keep username for next login
+      // The backend will invalidate the token
+      await fetch(addUIDToURL('api.php?action=logout'), { method: 'POST' });
       window.location.reload();
     } catch (err) {
       console.error('Logout error:', err);
       window.location.reload();
     }
-  };
-  
+  });
+
   const closeBtn = document.createElement('button');
   closeBtn.textContent = '閉じる';
   closeBtn.style.cssText = `
@@ -1903,14 +1985,14 @@ title.style.cssText = 'margin: 0 0 12px; font-size: 16px; text-align: center;';
     cursor: pointer;
     font-size: 14px;
   `;
-  
+
   closeBtn.onclick = () => {
     overlay.remove();
   };
-  
+
   actionButtons.appendChild(logoutBtn);
   actionButtons.appendChild(closeBtn);
-  
+
   dialog.appendChild(title);
   dialog.appendChild(uidSection);
   dialog.appendChild(passwordSection);
@@ -1922,7 +2004,7 @@ title.style.cssText = 'margin: 0 0 12px; font-size: 16px; text-align: center;';
   dialog.appendChild(actionButtons);
   overlay.appendChild(dialog);
   document.body.appendChild(overlay);
-  
+
   overlay.addEventListener('click', (e) => {
     if (e.target === overlay) {
       overlay.remove();
@@ -1941,9 +2023,9 @@ function shouldBypass401Reload(requestInput) {
   } else if (requestInput && typeof requestInput.url === 'string') {
     urlString = requestInput.url;
   }
-  
+
   if (!urlString) return false;
-  
+
   try {
     const parsed = new URL(urlString, window.location.href);
     if (!parsed.pathname.endsWith('/api.php') && !parsed.pathname.endsWith('api.php')) {
@@ -1957,15 +2039,15 @@ function shouldBypass401Reload(requestInput) {
   }
 }
 
-window.fetch = async function(...args) {
+window.fetch = async function (...args) {
   try {
     const response = await originalFetch.apply(this, args);
-    
+
     // Check for 401 Unauthorized - redirect to login for protected endpoints only
     if (response.status === 401 && !shouldBypass401Reload(args[0])) {
       window.location.reload();
     }
-    
+
     return response;
   } catch (error) {
     throw error;
@@ -2036,28 +2118,28 @@ function getPreset(presetId) {
 // Apply decoration preset to item
 function applyDecorationPreset(item, presetId) {
   if (!item) return;
-  
+
   captureStateForUndo('decoration', { itemId: item.id, oldDecoration: item.decoration });
-  
+
   if (presetId === null || presetId === 'none') {
     item.decoration = null;
   } else {
     item.decoration = { presetId };
   }
-  
+
   // Find the content element for this item
   const li = list.querySelector(`li[data-id="${item.id}"]`);
   const content = li ? li.querySelector('.task-content') : null;
-  
+
   // Save current focus state
   const wasFocused = content && document.activeElement === content;
   const selection = wasFocused ? window.getSelection() : null;
   let savedRange = null;
-  
+
   if (wasFocused && selection && selection.rangeCount > 0) {
     savedRange = selection.getRangeAt(0).cloneRange();
   }
-  
+
   // Update decoration styles directly without re-rendering
   if (content) {
     // Clear existing decoration styles
@@ -2066,7 +2148,7 @@ function applyDecorationPreset(item, presetId) {
     content.style.textDecoration = '';
     content.style.color = '';
     content.classList.remove('decorated');
-    
+
     // Apply new decoration if present
     if (item.decoration && item.decoration.presetId) {
       const preset = getPreset(item.decoration.presetId);
@@ -2078,7 +2160,7 @@ function applyDecorationPreset(item, presetId) {
         content.classList.add('decorated');
       }
     }
-    
+
     // Restore focus and selection
     if (wasFocused) {
       content.focus();
@@ -2093,24 +2175,24 @@ function applyDecorationPreset(item, presetId) {
       }
     }
   }
-  
+
   updateItem(item.id, { decoration: item.decoration }, undefined, { skipReload: true });
 }
 
 // Undo/Redo system
 function captureStateForUndo(actionType, data) {
   // Create a deep copy of the current items state
-  const stateCopy = items.map(item => ({...item}));
-  
+  const stateCopy = items.map(item => ({ ...item }));
+
   undoStack.push({
     actionType,
     itemsSnapshot: stateCopy,
     actionData: data
   });
-  
+
   // Clear redo stack when a new action is performed
   redoStack = [];
-  
+
   // Limit undo stack size to prevent memory issues
   if (undoStack.length > 100) {
     undoStack.shift();
@@ -2121,27 +2203,27 @@ function performUndo() {
   if (undoStack.length === 0) {
     return false;
   }
-  
+
   // Save current state to redo stack before undo
-  const currentState = items.map(item => ({...item}));
-  
+  const currentState = items.map(item => ({ ...item }));
+
   // Get the last action from undo stack
   const lastAction = undoStack.pop();
-  
+
   // Push current state to redo stack
   redoStack.push({
     actionType: lastAction.actionType,
     itemsSnapshot: currentState,
     actionData: lastAction.actionData
   });
-  
+
   // Restore the previous state
-  items = lastAction.itemsSnapshot.map(item => ({...item}));
-  
+  items = lastAction.itemsSnapshot.map(item => ({ ...item }));
+
   // Just render without syncing to backend
   // The state will be synced on next explicit operation
   render();
-  
+
   return true;
 }
 
@@ -2149,27 +2231,27 @@ function performRedo() {
   if (redoStack.length === 0) {
     return false;
   }
-  
+
   // Save current state to undo stack before redo
-  const currentState = items.map(item => ({...item}));
-  
+  const currentState = items.map(item => ({ ...item }));
+
   // Get the last redo action
   const redoAction = redoStack.pop();
-  
+
   // Push current state back to undo stack
   undoStack.push({
     actionType: redoAction.actionType,
     itemsSnapshot: currentState,
     actionData: redoAction.actionData
   });
-  
+
   // Restore the redo state
-  items = redoAction.itemsSnapshot.map(item => ({...item}));
-  
+  items = redoAction.itemsSnapshot.map(item => ({ ...item }));
+
   // Just render without syncing to backend
   // The state will be synced on next explicit operation
   render();
-  
+
   return true;
 }
 
@@ -2179,16 +2261,16 @@ const LINK_DETECTION_REGEX = /(?:https?:\/\/[^\s<>"']+|[A-Za-z]:[\\/][^\s<>"']+|
 
 function addItemFromServer(data) {
   if (!data || typeof data.id === 'undefined') return;
-  
+
   const newOrder = typeof data.sort_order === 'number' ? data.sort_order : getNextOrderValue();
-  
+
   items = items.map(item => {
     if (typeof item.order === 'number' && item.order >= newOrder) {
-      return {...item, order: item.order + 1};
+      return { ...item, order: item.order + 1 };
     }
     return item;
   });
-  
+
   const newItem = {
     id: data.id,
     type: data.type || 'text',
@@ -2199,7 +2281,7 @@ function addItemFromServer(data) {
     deadline: data.deadline || null,
     collapsed: Number(data.collapsed) === 1
   };
-  
+
   items.push(newItem);
   items.sort((a, b) => a.order - b.order);
   render();
@@ -2244,7 +2326,7 @@ function splitHtmlAtCaret(content) {
       atEnd: true
     };
   }
-  
+
   const range = selection.getRangeAt(0);
   if (!content.contains(range.startContainer)) {
     return {
@@ -2253,33 +2335,33 @@ function splitHtmlAtCaret(content) {
       atEnd: true
     };
   }
-  
+
   // Create a range from the start of content to the caret position
   const beforeRange = document.createRange();
   beforeRange.setStart(content, 0);
   beforeRange.setEnd(range.startContainer, range.startOffset);
-  
+
   // Create a range from the caret position to the end of content
   const afterRange = document.createRange();
   afterRange.setStart(range.startContainer, range.startOffset);
   afterRange.setEnd(content, content.childNodes.length);
-  
+
   // Extract HTML content from both ranges
   const beforeFragment = beforeRange.cloneContents();
   const afterFragment = afterRange.cloneContents();
-  
+
   // Convert fragments to HTML strings
   const tempBefore = document.createElement('div');
   tempBefore.appendChild(beforeFragment);
   const beforeHtml = tempBefore.innerHTML;
-  
+
   const tempAfter = document.createElement('div');
   tempAfter.appendChild(afterFragment);
   const afterHtml = tempAfter.innerHTML;
-  
+
   // Check if we're at the end
   const atEnd = afterHtml.trim() === '';
-  
+
   return {
     beforeHtml: beforeHtml,
     afterHtml: afterHtml,
@@ -2294,12 +2376,12 @@ function getRangeOffsetsWithin(container, range) {
     startRange.selectNodeContents(container);
     startRange.setEnd(range.startContainer, range.startOffset);
     const start = startRange.toString().length;
-    
+
     const endRange = range.cloneRange();
     endRange.selectNodeContents(container);
     endRange.setEnd(range.endContainer, range.endOffset);
     const end = endRange.toString().length;
-    
+
     return { start, end };
   } catch {
     return { start: null, end: null };
@@ -2308,11 +2390,11 @@ function getRangeOffsetsWithin(container, range) {
 
 function resolveOffsetToRangePoint(container, targetOffset) {
   if (!container || targetOffset === null || targetOffset === undefined) return null;
-  
+
   const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT, null);
   let current = 0;
   let node = walker.nextNode();
-  
+
   while (node) {
     const length = node.textContent.length;
     if (targetOffset <= current + length) {
@@ -2321,7 +2403,7 @@ function resolveOffsetToRangePoint(container, targetOffset) {
     current += length;
     node = walker.nextNode();
   }
-  
+
   if (container.lastChild && container.lastChild.nodeType === Node.TEXT_NODE) {
     return { node: container.lastChild, offset: container.lastChild.textContent.length };
   }
@@ -2384,35 +2466,35 @@ function restoreSelectionForContent(content) {
   const selection = window.getSelection();
   if (!selection) return false;
   if (!savedSelection) return false;
-  
+
   const targetContent = content || savedSelection.context || null;
   const savedRange = savedSelection.range;
-  
+
   if (savedRange && savedRange.startContainer && savedRange.startContainer.isConnected &&
-      (!targetContent || targetContent.contains(savedRange.startContainer))) {
+    (!targetContent || targetContent.contains(savedRange.startContainer))) {
     selection.removeAllRanges();
     selection.addRange(savedRange.cloneRange());
     return true;
   }
-  
+
   if (!targetContent || !targetContent.isConnected) {
     return false;
   }
-  
+
   if (typeof savedSelection.start !== 'number' || typeof savedSelection.end !== 'number') {
     return false;
   }
-  
+
   const totalLength = targetContent.textContent.length;
   const startOffset = Math.max(0, Math.min(savedSelection.start, totalLength));
   const endOffset = Math.max(startOffset, Math.min(savedSelection.end, totalLength));
-  
+
   const startPoint = resolveOffsetToRangePoint(targetContent, startOffset);
   const endPoint = resolveOffsetToRangePoint(targetContent, endOffset);
   if (!startPoint || !endPoint || !startPoint.node || !endPoint.node) {
     return false;
   }
-  
+
   try {
     const newRange = document.createRange();
     newRange.setStart(startPoint.node, startPoint.offset);
@@ -2461,7 +2543,7 @@ function findExactWrapper(range, content, predicate) {
       const candidateRange = document.createRange();
       candidateRange.selectNodeContents(node);
       if (candidateRange.compareBoundaryPoints(Range.START_TO_START, range) === 0 &&
-          candidateRange.compareBoundaryPoints(Range.END_TO_END, range) === 0) {
+        candidateRange.compareBoundaryPoints(Range.END_TO_END, range) === 0) {
         return node;
       }
     }
@@ -2546,11 +2628,11 @@ function analyzeBoldInRange(range, content) {
   // This is more reliable than cloning contents
   let hasText = false;
   let allBold = true;
-  
+
   // Get the start and end containers
   let startNode = range.startContainer;
   let endNode = range.endContainer;
-  
+
   // If containers are elements, get the text nodes
   if (startNode.nodeType === Node.ELEMENT_NODE && startNode.childNodes.length > 0) {
     startNode = startNode.childNodes[range.startOffset] || startNode;
@@ -2559,7 +2641,7 @@ function analyzeBoldInRange(range, content) {
     const childIndex = Math.max(0, range.endOffset - 1);
     endNode = endNode.childNodes[childIndex] || endNode;
   }
-  
+
   // Handle single text node selection
   if (startNode === endNode && startNode.nodeType === Node.TEXT_NODE) {
     const selectedText = startNode.textContent.substring(range.startOffset, range.endOffset);
@@ -2569,19 +2651,19 @@ function analyzeBoldInRange(range, content) {
     }
     return { hasText, allBold };
   }
-  
+
   // Handle multi-node selection
   // Walk through all text nodes in the content
   const walker = document.createTreeWalker(content, NodeFilter.SHOW_TEXT, null);
   let node = walker.nextNode();
-  
+
   while (node) {
     // Check if this node is within the range
     if (range.intersectsNode(node)) {
       let text = node.textContent || '';
       let startIdx = 0;
       let endIdx = text.length;
-      
+
       // If this is the start node, only consider text after startOffset
       if (node === range.startContainer) {
         startIdx = range.startOffset;
@@ -2590,10 +2672,10 @@ function analyzeBoldInRange(range, content) {
       if (node === range.endContainer) {
         endIdx = range.endOffset;
       }
-      
+
       // Extract the relevant portion of text
       text = text.substring(startIdx, endIdx);
-      
+
       if (text.trim().length > 0) {
         hasText = true;
         if (!isTextNodeWithinBold(node)) {
@@ -2603,7 +2685,7 @@ function analyzeBoldInRange(range, content) {
     }
     node = walker.nextNode();
   }
-  
+
   return { hasText, allBold };
 }
 
@@ -2698,7 +2780,7 @@ function clearColorRange(content, range) {
     const spanRange = document.createRange();
     spanRange.selectNodeContents(span);
     if (range.compareBoundaryPoints(Range.END_TO_START, spanRange) >= 0 &&
-        range.compareBoundaryPoints(Range.START_TO_END, spanRange) <= 0) {
+      range.compareBoundaryPoints(Range.START_TO_END, spanRange) <= 0) {
       clearColorElement(span);
     }
   });
@@ -2708,29 +2790,29 @@ function clearColorRange(content, range) {
 function applyColorToSelection(content, colorId) {
   const range = getSelectionRangeWithinContent(content);
   if (!range) return false;
-  
+
   if (colorId === 'default') {
     // Save range offsets before clearing
     const offsets = getRangeOffsetsWithin(content, range);
     if (typeof offsets.start !== 'number' || typeof offsets.end !== 'number') {
       return false;
     }
-    
+
     clearColorRange(content, range);
     content.normalize();
-    
+
     // Reconstruct range using saved offsets
     const startPoint = resolveOffsetToRangePoint(content, offsets.start);
     const endPoint = resolveOffsetToRangePoint(content, offsets.end);
     if (!startPoint || !endPoint || !startPoint.node || !endPoint.node) {
       return false;
     }
-    
+
     try {
       const newRange = document.createRange();
       newRange.setStart(startPoint.node, startPoint.offset);
       newRange.setEnd(endPoint.node, endPoint.offset);
-      
+
       const selection = window.getSelection();
       if (selection) {
         selection.removeAllRanges();
@@ -2742,38 +2824,38 @@ function applyColorToSelection(content, colorId) {
       return false;
     }
   }
-  
+
   const hex = TEXT_COLOR_MAP[colorId];
   if (!hex) {
     return false;
   }
-  
+
   // Save range offsets before clearing to reconstruct range after clearing
   const offsets = getRangeOffsetsWithin(content, range);
-  
+
   // Always clear existing colors before applying new color
   // This allows changing from one color to another
   clearColorRange(content, range);
   content.normalize();
-  
+
   // Reconstruct range using saved offsets
   const startPoint = resolveOffsetToRangePoint(content, offsets.start);
   const endPoint = resolveOffsetToRangePoint(content, offsets.end);
   if (!startPoint || !endPoint || !startPoint.node || !endPoint.node) {
     return false;
   }
-  
+
   const newRange = document.createRange();
   newRange.setStart(startPoint.node, startPoint.offset);
   newRange.setEnd(endPoint.node, endPoint.offset);
-  
+
   const fragment = newRange.extractContents();
   const span = document.createElement('span');
   span.setAttribute('data-text-color', colorId);
   span.style.color = hex;
   span.appendChild(fragment);
   newRange.insertNode(span);
-  
+
   const selection = window.getSelection();
   if (selection) {
     const finalRange = document.createRange();
@@ -2782,14 +2864,14 @@ function applyColorToSelection(content, colorId) {
     selection.addRange(finalRange);
   }
   content.normalize();
-  
+
   return true;
 }
 
 function commitFormattingChange(content, item, options = {}) {
   // Capture state before formatting change
   captureStateForUndo('formatting', { itemId: item.id, oldText: item.text });
-  
+
   const selection = window.getSelection();
   const selectionSnapshot = (options.keepSelection && selection && selection.rangeCount > 0 && content.contains(selection.getRangeAt(0).commonAncestorContainer))
     ? captureSelection(selection, content)
@@ -2827,7 +2909,7 @@ function commitFormattingChange(content, item, options = {}) {
 
 // Load from SQLite3 via API
 function loadItems(callback) {
-  fetch(addUIDToURL('api.php?action=list'), {cache: 'no-store'})
+  fetch(addUIDToURL('api.php?action=list'), { cache: 'no-store' })
     .then(r => r.json())
     .then(data => {
       items = data.map(row => ({
@@ -2861,40 +2943,40 @@ function createItem(type = 'text', text = '', afterId = null, callback, options 
     if (callback) callback();
     return;
   }
-  
+
   // Capture state before creating
   captureStateForUndo('create', { type, text, afterId });
-  
+
   const preparedText = prepareTextForStorage(text);
-  
-  const params = new URLSearchParams({text: preparedText, type});
+
+  const params = new URLSearchParams({ text: preparedText, type });
   if (afterId) params.append('after_id', afterId);
   if (options.allowEmpty) params.append('allow_empty', '1');
   if (options.deadline !== undefined) params.append('deadline', options.deadline || '');
 
   fetch(addUIDToURL('api.php?action=add'), {
     method: 'POST',
-    headers: {'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8'},
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8' },
     body: params
   })
-  .then(response => {
-    const contentType = response.headers.get('Content-Type') || '';
-    if (contentType.includes('application/json')) {
-      return response.json();
-    }
-    return null;
-  })
-  .then(data => {
-    if (options.skipReload && data) {
-      addItemFromServer(data);
-      if (typeof callback === 'function') callback(data);
-      return;
-    }
-    loadItems(() => {
-      if (typeof callback === 'function') callback(data);
-    });
-  })
-  .catch(err => console.error('Failed to create item:', err));
+    .then(response => {
+      const contentType = response.headers.get('Content-Type') || '';
+      if (contentType.includes('application/json')) {
+        return response.json();
+      }
+      return null;
+    })
+    .then(data => {
+      if (options.skipReload && data) {
+        addItemFromServer(data);
+        if (typeof callback === 'function') callback(data);
+        return;
+      }
+      loadItems(() => {
+        if (typeof callback === 'function') callback(data);
+      });
+    })
+    .catch(err => console.error('Failed to create item:', err));
 }
 
 // Update item via API
@@ -2913,85 +2995,85 @@ function updateItem(id, updates, callback, options = {}) {
     delete updates.skipAutoLink;
   }
   const shouldSkipReload = options && options.skipReload;
-  
+
   // Handle checked state separately
   if (updates.checked !== undefined && Object.keys(updates).length === 1) {
     const params = new URLSearchParams({
       id: id.toString(),
       done: updates.checked ? '1' : '0'
     });
-    
+
     fetch(addUIDToURL('api.php?action=toggle'), {
       method: 'POST',
-      headers: {'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8'},
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8' },
       body: params
     })
-    .then(() => loadItems(callback))
-    .catch(err => console.error('Failed to toggle item:', err));
+      .then(() => loadItems(callback))
+      .catch(err => console.error('Failed to toggle item:', err));
     return;
   }
-  
+
   // Handle text or type or decoration updates via edit endpoint
-  const params = new URLSearchParams({id: id.toString()});
+  const params = new URLSearchParams({ id: id.toString() });
   let preparedText;
-  
+
   if (updates.text !== undefined) {
     preparedText = skipAutoLink ? updates.text : prepareTextForStorage(updates.text);
     params.append('text', preparedText);
   } else if (item.text) {
     params.append('text', item.text);
   }
-  
+
   if (updates.type !== undefined) {
     params.append('type', updates.type);
   }
-  
+
   if (updates.decoration !== undefined) {
     params.append('decoration', updates.decoration ? JSON.stringify(updates.decoration) : '');
   }
-  
+
   if (updates.deadline !== undefined) {
     params.append('deadline', updates.deadline || '');
   }
-  
+
   if (updates.collapsed !== undefined) {
     params.append('collapsed', updates.collapsed ? '1' : '0');
   }
-  
+
   fetch(addUIDToURL('api.php?action=edit'), {
     method: 'POST',
-    headers: {'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8'},
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8' },
     body: params
   })
-  .then(() => {
-    if (shouldSkipReload) {
-      if (preparedText !== undefined) {
-        item.text = preparedText;
-      }
-      if (updates.type !== undefined) {
-        item.type = updates.type;
-      }
-      if (updates.decoration !== undefined) {
-        item.decoration = updates.decoration;
-      }
-      if (updates.deadline !== undefined) {
-        item.deadline = updates.deadline;
-      }
-      if (updates.collapsed !== undefined) {
-        item.collapsed = updates.collapsed;
-      }
-      if (typeof callback === 'function') {
-        callback();
-      }
-    } else {
-      loadItems(() => {
+    .then(() => {
+      if (shouldSkipReload) {
+        if (preparedText !== undefined) {
+          item.text = preparedText;
+        }
+        if (updates.type !== undefined) {
+          item.type = updates.type;
+        }
+        if (updates.decoration !== undefined) {
+          item.decoration = updates.decoration;
+        }
+        if (updates.deadline !== undefined) {
+          item.deadline = updates.deadline;
+        }
+        if (updates.collapsed !== undefined) {
+          item.collapsed = updates.collapsed;
+        }
         if (typeof callback === 'function') {
           callback();
         }
-      });
-    }
-  })
-  .catch(err => console.error('Failed to update item:', err));
+      } else {
+        loadItems(() => {
+          if (typeof callback === 'function') {
+            callback();
+          }
+        });
+      }
+    })
+    .catch(err => console.error('Failed to update item:', err));
 }
 
 // Delete item via API
@@ -3000,18 +3082,18 @@ function deleteItem(id) {
   if (index !== -1) {
     // Capture state before deleting
     captureStateForUndo('delete', { id });
-    
-    const params = new URLSearchParams({id: id.toString()});
+
+    const params = new URLSearchParams({ id: id.toString() });
     fetch(addUIDToURL('api.php?action=delete'), {
       method: 'POST',
-      headers: {'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8'},
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8' },
       body: params
     })
-    .then(() => {
-      // Also delete children on client side (server should handle this too)
-      return loadItems();
-    })
-    .catch(err => console.error('Failed to delete item:', err));
+      .then(() => {
+        // Also delete children on client side (server should handle this too)
+        return loadItems();
+      })
+      .catch(err => console.error('Failed to delete item:', err));
   }
 }
 
@@ -3030,59 +3112,59 @@ function insertItemBefore(beforeId, type = 'text', text = '', callback, options 
     if (callback) callback();
     return;
   }
-  
+
   // Capture state before creating
   captureStateForUndo('create', { type, text, beforeId });
-  
+
   const preparedText = prepareTextForStorage(text);
-  
-  const params = new URLSearchParams({text: preparedText, type});
+
+  const params = new URLSearchParams({ text: preparedText, type });
   params.append('before_id', beforeId);
   if (options.allowEmpty) params.append('allow_empty', '1');
   if (options.deadline !== undefined) params.append('deadline', options.deadline || '');
 
   fetch(addUIDToURL('api.php?action=add'), {
     method: 'POST',
-    headers: {'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8'},
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8' },
     body: params
   })
-  .then(response => {
-    const contentType = response.headers.get('Content-Type') || '';
-    if (contentType.includes('application/json')) {
-      return response.json();
-    }
-    return null;
-  })
-  .then(data => {
-    if (options.skipReload && data) {
-      addItemFromServer(data);
-      if (typeof callback === 'function') callback(data);
-      return;
-    }
-    loadItems(() => {
-      if (typeof callback === 'function') callback(data);
-    });
-  })
-  .catch(err => console.error('Failed to create item before:', err));
+    .then(response => {
+      const contentType = response.headers.get('Content-Type') || '';
+      if (contentType.includes('application/json')) {
+        return response.json();
+      }
+      return null;
+    })
+    .then(data => {
+      if (options.skipReload && data) {
+        addItemFromServer(data);
+        if (typeof callback === 'function') callback(data);
+        return;
+      }
+      loadItems(() => {
+        if (typeof callback === 'function') callback(data);
+      });
+    })
+    .catch(err => console.error('Failed to create item before:', err));
 }
 
 // Reorder items based on DOM order via API
 function reorderItems(callback) {
   // Capture state before reordering
   captureStateForUndo('reorder', {});
-  
+
   const lis = Array.from(list.querySelectorAll('li[data-id]'));
   const order = lis.map(li => li.dataset.id);
-  
-  const params = new URLSearchParams({order: JSON.stringify(order)});
-  
+
+  const params = new URLSearchParams({ order: JSON.stringify(order) });
+
   fetch(addUIDToURL('api.php?action=reorder'), {
     method: 'POST',
-    headers: {'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8'},
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8' },
     body: params
   })
-  .then(() => loadItems(callback))
-  .catch(err => console.error('Failed to reorder items:', err));
+    .then(() => loadItems(callback))
+    .catch(err => console.error('Failed to reorder items:', err));
 }
 
 // Context menu state
@@ -3123,9 +3205,9 @@ function updateColorMenuSelection() {
 
 function handleColorMenuKeydown(event) {
   if (!colorMenu) return;
-  
+
   const key = event.key.toLowerCase();
-  
+
   // Handle arrow keys for navigation
   if (key === 'arrowdown' || key === 'arrowup') {
     event.preventDefault();
@@ -3137,7 +3219,7 @@ function handleColorMenuKeydown(event) {
     updateColorMenuSelection();
     return;
   }
-  
+
   // Handle Enter to apply selected color
   if (key === 'enter') {
     event.preventDefault();
@@ -3147,14 +3229,14 @@ function handleColorMenuKeydown(event) {
     }
     return;
   }
-  
+
   // Handle Escape to close menu
   if (key === 'escape') {
     event.preventDefault();
     closeColorMenu();
     return;
   }
-  
+
   // Handle shortcut keys
   const shortcutOption = TEXT_COLOR_OPTIONS.find(opt => opt.shortcut.toLowerCase() === key);
   if (shortcutOption) {
@@ -3166,11 +3248,11 @@ function handleColorMenuKeydown(event) {
 
 function openColorMenu(position, content, item) {
   closeColorMenu();
-  
+
   if (!restoreSelectionForContent(content)) {
     return;
   }
-  
+
   colorMenu = document.createElement('div');
   colorMenu.className = 'context-color-menu';
   colorMenu.setAttribute('tabindex', '-1');
@@ -3178,7 +3260,7 @@ function openColorMenu(position, content, item) {
   colorMenu.setAttribute('aria-label', '色を変更');
   colorMenuContext = { content, item };
   selectedColorIndex = 0;
-  
+
   TEXT_COLOR_OPTIONS.forEach((option, index) => {
     const optionElement = document.createElement('div');
     optionElement.className = 'context-color-option';
@@ -3186,7 +3268,7 @@ function openColorMenu(position, content, item) {
     optionElement.setAttribute('data-index', index);
     optionElement.setAttribute('role', 'menuitem');
     optionElement.setAttribute('aria-label', `${option.label} (${option.shortcut})`);
-    
+
     const swatch = document.createElement('span');
     swatch.className = 'context-color-swatch';
     if (option.color) {
@@ -3194,28 +3276,28 @@ function openColorMenu(position, content, item) {
     } else {
       swatch.classList.add('context-color-swatch-default');
     }
-    
+
     const label = document.createElement('span');
     label.className = 'context-color-label';
     label.textContent = option.label;
-    
+
     const shortcut = document.createElement('span');
     shortcut.className = 'context-color-shortcut';
     shortcut.textContent = option.shortcut;
-    
+
     optionElement.appendChild(swatch);
     optionElement.appendChild(label);
     optionElement.appendChild(shortcut);
-    
+
     optionElement.addEventListener('click', () => {
       applyColorChoice(option.id);
     });
-    
+
     colorMenu.appendChild(optionElement);
   });
-  
+
   document.body.appendChild(colorMenu);
-  
+
   const menuRect = colorMenu.getBoundingClientRect();
   const viewportWidth = window.innerWidth;
   const viewportHeight = window.innerHeight;
@@ -3223,25 +3305,25 @@ function openColorMenu(position, content, item) {
   const scrollY = window.pageYOffset || window.scrollY || 0;
   let left = position.x;
   let top = position.y;
-  
+
   if (left + menuRect.width > scrollX + viewportWidth) {
     left = Math.max(scrollX + 8, scrollX + viewportWidth - menuRect.width - 8);
   }
   if (top + menuRect.height > scrollY + viewportHeight) {
     top = Math.max(scrollY + 8, scrollY + viewportHeight - menuRect.height - 8);
   }
-  
+
   colorMenu.style.left = `${left}px`;
   colorMenu.style.top = `${top}px`;
-  
+
   // Set initial selection highlight
   updateColorMenuSelection();
-  
+
   // Add keyboard event listener
   document.addEventListener('keydown', handleColorMenuKeydown);
-  
+
   setTimeout(() => document.addEventListener('click', handleColorMenuOutside, true), 0);
-  
+
   // Focus the menu to receive keyboard events
   colorMenu.focus();
 }
@@ -3265,18 +3347,18 @@ function applyColorChoice(colorId) {
 // Calculate days until deadline
 function calculateDeadlineDays(deadlineStr) {
   if (!deadlineStr) return null;
-  
+
   try {
     const deadline = new Date(deadlineStr);
     const today = new Date();
-    
+
     // Reset time to midnight for accurate day comparison
     deadline.setHours(0, 0, 0, 0);
     today.setHours(0, 0, 0, 0);
-    
+
     const diffTime = deadline - today;
     const diffDays = Math.round(diffTime / (1000 * 60 * 60 * 24));
-    
+
     return diffDays;
   } catch (err) {
     console.error('Failed to calculate deadline:', err);
@@ -3288,7 +3370,7 @@ function calculateDeadlineDays(deadlineStr) {
 function getDeadlineDisplay(deadlineStr) {
   const days = calculateDeadlineDays(deadlineStr);
   if (days === null) return null;
-  
+
   let text, textColor, backgroundColor, tooltip;
   // Tooltip: always show deadline as YYYY/MM/DD
   let tooltipDate = '';
@@ -3296,9 +3378,9 @@ function getDeadlineDisplay(deadlineStr) {
     // Accepts YYYY-MM-DD or YYYYMMDD
     let y, m, d;
     if (/^\d{8}$/.test(deadlineStr)) {
-      y = deadlineStr.slice(0,4);
-      m = deadlineStr.slice(4,6);
-      d = deadlineStr.slice(6,8);
+      y = deadlineStr.slice(0, 4);
+      m = deadlineStr.slice(4, 6);
+      d = deadlineStr.slice(6, 8);
     } else if (/^\d{4}-\d{2}-\d{2}$/.test(deadlineStr)) {
       [y, m, d] = deadlineStr.split('-');
     }
@@ -3337,14 +3419,14 @@ function getDeadlineDisplay(deadlineStr) {
 // Set deadline for an item
 function setDeadline(item, deadlineStr, callback) {
   if (!item) return;
-  
+
   captureStateForUndo('deadline', { itemId: item.id, oldDeadline: item.deadline });
-  
+
   // Save any unsaved content before setting deadline
   const li = list.querySelector(`li[data-id="${item.id}"]`);
   const content = li ? li.querySelector('.task-content') : null;
   const updates = { deadline: deadlineStr };
-  
+
   if (content) {
     // Sanitize and save the current content
     sanitizeContentInPlace(content);
@@ -3354,7 +3436,7 @@ function setDeadline(item, deadlineStr, callback) {
       updates.text = sanitizedContent;
     }
   }
-  
+
   item.deadline = deadlineStr;
   updateItem(item.id, updates, () => {
     // Re-render to show deadline indicator
@@ -3403,7 +3485,7 @@ function promptForDeadline(item) {
         helpers.close();
       });
     },
-    onCancel: () => {}
+    onCancel: () => { }
   });
 }
 
@@ -3414,7 +3496,7 @@ function handleContextMenu(e, content, item) {
   const selectedText = selection ? selection.toString().trim() : '';
   const anchorTarget = findAnchorFromEventTarget(e.target);
   const hasAnchorTarget = !!anchorTarget;
-  
+
   // Show context menu for text selection (hyperlink) or existing hyperlink
   if (!selectedText && !hasAnchorTarget) {
     // No selection and no hyperlink - show decoration preset menu
@@ -3422,9 +3504,9 @@ function handleContextMenu(e, content, item) {
     showDecorationPresetsMenu(e, item);
     return;
   }
-  
+
   e.preventDefault();
-  
+
   if (selectedText && selection && selection.rangeCount > 0) {
     const range = selection.getRangeAt(0);
     if (content.contains(range.commonAncestorContainer)) {
@@ -3435,12 +3517,12 @@ function handleContextMenu(e, content, item) {
   } else {
     savedSelection = null;
   }
-  
+
   if (contextMenu) {
     contextMenu.remove();
   }
   contextMenu = null;
-  
+
   const menuItems = [];
   if (selectedText) {
     menuItems.push({
@@ -3462,42 +3544,42 @@ function handleContextMenu(e, content, item) {
       }
     });
   }
-  
+
   if (menuItems.length === 0) {
     contextMenu = null;
     return;
   }
-  
+
   contextMenu = document.createElement('div');
   contextMenu.className = 'hyperlink-context-menu';
-  
-  menuItems.forEach(({label, shortcut, action}) => {
+
+  menuItems.forEach(({ label, shortcut, action }) => {
     const menuItem = document.createElement('div');
     menuItem.className = 'context-menu-item';
-    
+
     const labelSpan = document.createElement('span');
     labelSpan.className = 'context-menu-item-label';
     labelSpan.textContent = label;
     menuItem.appendChild(labelSpan);
-    
+
     if (shortcut) {
       const shortcutSpan = document.createElement('span');
       shortcutSpan.className = 'context-menu-shortcut';
       shortcutSpan.textContent = shortcut;
       menuItem.appendChild(shortcutSpan);
     }
-    
+
     menuItem.addEventListener('click', () => {
       action();
     });
     contextMenu.appendChild(menuItem);
   });
-  
+
   contextMenu.style.left = `${e.pageX}px`;
   contextMenu.style.top = `${e.pageY}px`;
-  
+
   document.body.appendChild(contextMenu);
-  
+
   function removeContextMenu() {
     if (contextMenu) {
       contextMenu.remove();
@@ -3506,7 +3588,7 @@ function handleContextMenu(e, content, item) {
     closeColorMenu();
     document.removeEventListener('click', closeMenu);
   }
-  
+
   const closeMenu = (event) => {
     if (contextMenu && !contextMenu.contains(event.target)) {
       removeContextMenu();
@@ -3522,103 +3604,103 @@ function showDecorationPresetsMenu(e, item) {
     contextMenu.remove();
   }
   contextMenu = null;
-  
+
   contextMenu = document.createElement('div');
   contextMenu.className = 'hyperlink-context-menu decoration-preset-menu';
-  
+
   // Add "None" option to remove decoration
   const noneItem = document.createElement('div');
   noneItem.className = 'context-menu-item';
   if (!item.decoration) {
     noneItem.classList.add('selected');
   }
-  
+
   const noneLabel = document.createElement('span');
   noneLabel.className = 'context-menu-item-label';
   noneLabel.textContent = '装飾なし';
   noneItem.appendChild(noneLabel);
-  
+
   const noneShortcut = document.createElement('span');
   noneShortcut.className = 'context-menu-shortcut';
   noneShortcut.textContent = 'Ctrl+0';
   noneItem.appendChild(noneShortcut);
-  
+
   noneItem.addEventListener('click', () => {
     applyDecorationPreset(item, null);
     removeContextMenu();
   });
   contextMenu.appendChild(noneItem);
-  
+
   // Add preset options
   decorationPresets.forEach(preset => {
     const menuItem = document.createElement('div');
     menuItem.className = 'context-menu-item decoration-preset-item';
-    
+
     const isSelected = item.decoration && item.decoration.presetId === preset.id;
     if (isSelected) {
       menuItem.classList.add('selected');
     }
-    
+
     const labelSpan = document.createElement('span');
     labelSpan.className = 'context-menu-item-label';
     labelSpan.textContent = preset.name;
-    
+
     // Apply decoration styles to label for preview
     if (preset.bold) labelSpan.style.fontWeight = 'bold';
     if (preset.italic) labelSpan.style.fontStyle = 'italic';
     if (preset.underline) labelSpan.style.textDecoration = 'underline';
     if (preset.color) labelSpan.style.color = preset.color;
-    
+
     menuItem.appendChild(labelSpan);
-    
+
     if (preset.shortcut) {
       const shortcutSpan = document.createElement('span');
       shortcutSpan.className = 'context-menu-shortcut';
       shortcutSpan.textContent = `Ctrl+${preset.shortcut}`;
       menuItem.appendChild(shortcutSpan);
     }
-    
+
     menuItem.addEventListener('click', () => {
       applyDecorationPreset(item, preset.id);
       removeContextMenu();
     });
     contextMenu.appendChild(menuItem);
   });
-  
+
   // Add settings button
   const settingsItem = document.createElement('div');
   settingsItem.className = 'context-menu-item';
-  
+
   const settingsLabel = document.createElement('span');
   settingsLabel.className = 'context-menu-item-label';
   settingsLabel.textContent = '装飾設定...';
   settingsItem.appendChild(settingsLabel);
-  
+
   settingsItem.addEventListener('click', () => {
     removeContextMenu();
     openPresetSettings();
   });
   contextMenu.appendChild(settingsItem);
-  
+
   // Add separator before deadline
   const separator = document.createElement('div');
   separator.className = 'context-menu-inline-separator';
   contextMenu.appendChild(separator);
-  
+
   // Add deadline menu item
   const deadlineItem = document.createElement('div');
   deadlineItem.className = 'context-menu-item';
-  
+
   const deadlineLabel = document.createElement('span');
   deadlineLabel.className = 'context-menu-item-label';
   deadlineLabel.textContent = '納期設定...';
   deadlineItem.appendChild(deadlineLabel);
-  
+
   const deadlineShortcut = document.createElement('span');
   deadlineShortcut.className = 'context-menu-shortcut';
   deadlineShortcut.textContent = 'Ctrl+D';
   deadlineItem.appendChild(deadlineShortcut);
-  
+
   deadlineItem.addEventListener('click', () => {
     removeContextMenu();
     promptForDeadline(item);
@@ -3632,53 +3714,53 @@ function showDecorationPresetsMenu(e, item) {
   if (FORMAT_MENU_OPTIONS.length > 0) {
     const formattingItem = document.createElement('div');
     formattingItem.className = 'context-menu-item has-submenu formatting-menu-item';
-  
+
     const formattingLabel = document.createElement('span');
     formattingLabel.className = 'context-menu-item-label';
     formattingLabel.textContent = '書式設定';
     formattingItem.appendChild(formattingLabel);
-  
+
     const arrow = document.createElement('span');
     arrow.className = 'context-submenu-arrow';
     arrow.textContent = '›';
     formattingItem.appendChild(arrow);
-  
+
     const submenu = document.createElement('div');
     submenu.className = 'context-submenu';
-  
+
     FORMAT_MENU_OPTIONS.forEach(option => {
       const submenuItem = document.createElement('div');
       submenuItem.className = 'context-submenu-item';
-  
+
       const label = document.createElement('span');
       label.className = 'context-menu-item-label';
       label.textContent = option.label;
       submenuItem.appendChild(label);
-  
+
       const shortcut = document.createElement('span');
       shortcut.className = 'context-menu-shortcut';
       shortcut.textContent = option.command;
       submenuItem.appendChild(shortcut);
-  
+
       submenuItem.addEventListener('click', (event) => {
         event.stopPropagation();
         const shouldClear = option.type === 'hr';
         convertItemFormat(item, option.type, { clearText: shouldClear });
         removeContextMenu();
       });
-  
+
       submenu.appendChild(submenuItem);
     });
-  
+
     formattingItem.appendChild(submenu);
     contextMenu.appendChild(formattingItem);
   }
-  
+
   contextMenu.style.left = `${e.pageX}px`;
   contextMenu.style.top = `${e.pageY}px`;
-  
+
   document.body.appendChild(contextMenu);
-  
+
   function removeContextMenu() {
     if (contextMenu) {
       contextMenu.remove();
@@ -3686,7 +3768,7 @@ function showDecorationPresetsMenu(e, item) {
     }
     document.removeEventListener('click', closeMenu);
   }
-  
+
   const closeMenu = (event) => {
     if (contextMenu && !contextMenu.contains(event.target)) {
       removeContextMenu();
@@ -3703,32 +3785,32 @@ function openPresetSettings() {
   overlay.setAttribute('role', 'dialog');
   overlay.setAttribute('aria-modal', 'true');
   overlay.setAttribute('aria-label', '装飾プリセット設定');
-  
+
   // Create dialog
   const dialog = document.createElement('div');
   dialog.className = 'preset-settings-dialog';
-  
+
   // Header
   const header = document.createElement('div');
   header.className = 'preset-settings-header';
   header.innerHTML = '<h2>装飾設定</h2>';
   dialog.appendChild(header);
-  
+
   // Preset list
   const listContainer = document.createElement('div');
   listContainer.className = 'preset-settings-list';
-  
+
   decorationPresets.forEach((preset, index) => {
     const presetItem = createPresetItem(preset, index);
     listContainer.appendChild(presetItem);
   });
-  
+
   dialog.appendChild(listContainer);
-  
+
   // Buttons
   const actions = document.createElement('div');
   actions.className = 'preset-settings-actions';
-  
+
   const addBtn = document.createElement('button');
   addBtn.textContent = '+';
   addBtn.className = 'preset-settings-btn preset-settings-btn-add';
@@ -3737,7 +3819,7 @@ function openPresetSettings() {
     addNewPreset(listContainer);
   });
   actions.appendChild(addBtn);
-  
+
   const closeBtn = document.createElement('button');
   closeBtn.textContent = '閉じる';
   closeBtn.className = 'preset-settings-btn preset-settings-btn-close';
@@ -3745,11 +3827,11 @@ function openPresetSettings() {
     overlay.remove();
   });
   actions.appendChild(closeBtn);
-  
+
   dialog.appendChild(actions);
   overlay.appendChild(dialog);
   document.body.appendChild(overlay);
-  
+
   // Close on overlay click
   overlay.addEventListener('click', (e) => {
     if (e.target === overlay) {
@@ -3761,7 +3843,7 @@ function openPresetSettings() {
 function createPresetItem(preset, index) {
   const item = document.createElement('div');
   item.className = 'preset-settings-item';
-  
+
   // Name input
   const nameInput = document.createElement('input');
   nameInput.type = 'text';
@@ -3774,40 +3856,40 @@ function createPresetItem(preset, index) {
     render();
   });
   item.appendChild(nameInput);
-  
+
   // Style checkboxes
   const styleContainer = document.createElement('div');
   styleContainer.className = 'preset-style-options';
-  
+
   const boldCheck = createCheckbox('太字', preset.bold, (checked) => {
     preset.bold = checked;
     savePresets();
     render();
   });
   styleContainer.appendChild(boldCheck);
-  
+
   const italicCheck = createCheckbox('斜体', preset.italic, (checked) => {
     preset.italic = checked;
     savePresets();
     render();
   });
   styleContainer.appendChild(italicCheck);
-  
- /*  const underlineCheck = createCheckbox('下線', preset.underline, (checked) => {
-    preset.underline = checked;
-    savePresets();
-    render();
-  });
-  styleContainer.appendChild(underlineCheck); */
-  
+
+  /*  const underlineCheck = createCheckbox('下線', preset.underline, (checked) => {
+     preset.underline = checked;
+     savePresets();
+     render();
+   });
+   styleContainer.appendChild(underlineCheck); */
+
   item.appendChild(styleContainer);
-  
+
   // Color palette selector
   const colorPalette = document.createElement('div');
   colorPalette.className = 'preset-color-palette';
-  
+
   const commonColors = ['#FF0000', '#FF6600', '#FFCC00', '#00FF00', '#0066FF', '#6600FF', '#FF00FF', '#000000', '#666666', '#CCCCCC'];
-  
+
   commonColors.forEach(color => {
     const colorBtn = document.createElement('button');
     colorBtn.type = 'button';
@@ -3827,18 +3909,18 @@ function createPresetItem(preset, index) {
     });
     colorPalette.appendChild(colorBtn);
   });
-  
+
   item.appendChild(colorPalette);
-  
+
   // Shortcut input with Ctrl+ prefix
   const shortcutContainer = document.createElement('div');
   shortcutContainer.className = 'preset-shortcut-container';
-  
+
   const shortcutPrefix = document.createElement('span');
   shortcutPrefix.className = 'preset-shortcut-prefix';
   shortcutPrefix.textContent = 'Ctrl+';
   shortcutContainer.appendChild(shortcutPrefix);
-  
+
   const shortcutInput = document.createElement('input');
   shortcutInput.type = 'text';
   shortcutInput.value = preset.shortcut || '';
@@ -3850,9 +3932,9 @@ function createPresetItem(preset, index) {
     savePresets();
   });
   shortcutContainer.appendChild(shortcutInput);
-  
+
   item.appendChild(shortcutContainer);
-  
+
   // Delete button
   const deleteBtn = document.createElement('button');
   deleteBtn.textContent = '削除';
@@ -3866,22 +3948,22 @@ function createPresetItem(preset, index) {
     }
   });
   item.appendChild(deleteBtn);
-  
+
   return item;
 }
 
 function createCheckbox(label, checked, onChange) {
   const container = document.createElement('label');
   container.className = 'preset-checkbox-label';
-  
+
   const checkbox = document.createElement('input');
   checkbox.type = 'checkbox';
   checkbox.checked = checked;
   checkbox.addEventListener('change', () => onChange(checkbox.checked));
-  
+
   container.appendChild(checkbox);
   container.appendChild(document.createTextNode(label));
-  
+
   return container;
 }
 
@@ -3897,7 +3979,7 @@ function addNewPreset(listContainer) {
   };
   decorationPresets.push(newPreset);
   savePresets();
-  
+
   const presetItem = createPresetItem(newPreset, decorationPresets.length - 1);
   listContainer.appendChild(presetItem);
 }
@@ -3905,12 +3987,12 @@ function addNewPreset(listContainer) {
 // Validate URL to prevent XSS attacks
 function isValidUrl(url) {
   if (!url) return false;
-  
+
   const trimmed = url.trim();
   if (isLocalFilePath(trimmed)) {
     return true;
   }
-  
+
   try {
     const parsed = new URL(trimmed);
     // Only allow http and https protocols
@@ -3936,10 +4018,10 @@ function extractLocalFilePath(url) {
 
 function decorateAnchor(anchor, originalHref) {
   if (!anchor || !originalHref) return;
-  
+
   const trimmedHref = originalHref.trim();
   anchor.setAttribute('data-original-href', trimmedHref);
-  
+
   if (isLocalFilePath(trimmedHref)) {
     const localPath = extractLocalFilePath(trimmedHref);
     anchor.setAttribute('data-link-type', 'local-file');
@@ -3960,7 +4042,7 @@ function decorateAnchor(anchor, originalHref) {
 
 async function copyPathToClipboard(path) {
   if (!path) return false;
-  
+
   if (navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
     try {
       await navigator.clipboard.writeText(path);
@@ -3969,7 +4051,7 @@ async function copyPathToClipboard(path) {
       console.error('Standard clipboard write failed, falling back:', err);
     }
   }
-  
+
   return fallbackCopyToClipboard(path);
 }
 
@@ -3983,7 +4065,7 @@ function fallbackCopyToClipboard(text) {
   document.body.appendChild(textarea);
   textarea.select();
   textarea.setSelectionRange(0, textarea.value.length);
-  
+
   let copied = false;
   try {
     copied = document.execCommand('copy');
@@ -3993,7 +4075,7 @@ function fallbackCopyToClipboard(text) {
   } finally {
     document.body.removeChild(textarea);
   }
-  
+
   return copied;
 }
 
@@ -4020,7 +4102,7 @@ function splitLinkTextAndTrailingPunctuation(text) {
 
 function autoLinkContent(root) {
   if (!root || (root.dataset && root.dataset.disableAutoLink === 'true')) return;
-  
+
   const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, null);
   const textNodes = [];
   let current;
@@ -4029,7 +4111,7 @@ function autoLinkContent(root) {
     if (isTextNodeWithinAnchor(current)) continue;
     textNodes.push(current);
   }
-  
+
   textNodes.forEach(node => {
     const text = node.nodeValue;
     LINK_DETECTION_REGEX.lastIndex = 0;
@@ -4037,48 +4119,48 @@ function autoLinkContent(root) {
     let lastIndex = 0;
     let hasMatch = false;
     const fragment = document.createDocumentFragment();
-    
+
     while ((match = LINK_DETECTION_REGEX.exec(text)) !== null) {
       const matchedText = match[0];
       const matchIndex = match.index;
-      
+
       if (matchIndex > lastIndex) {
         fragment.appendChild(document.createTextNode(text.slice(lastIndex, matchIndex)));
       }
-      
+
       const { linkText, trailing } = splitLinkTextAndTrailingPunctuation(matchedText);
       if (!linkText) {
         fragment.appendChild(document.createTextNode(matchedText));
         lastIndex = matchIndex + matchedText.length;
         continue;
       }
-      
+
       if (!isValidUrl(linkText)) {
         fragment.appendChild(document.createTextNode(matchedText));
         lastIndex = matchIndex + matchedText.length;
         continue;
       }
-      
+
       const anchor = document.createElement('a');
       anchor.textContent = linkText;
       anchor.setAttribute('href', linkText);
       decorateAnchor(anchor, linkText);
       fragment.appendChild(anchor);
-      
+
       if (trailing) {
         fragment.appendChild(document.createTextNode(trailing));
       }
-      
+
       lastIndex = matchIndex + matchedText.length;
       hasMatch = true;
     }
-    
+
     if (!hasMatch) return;
-    
+
     if (lastIndex < text.length) {
       fragment.appendChild(document.createTextNode(text.slice(lastIndex)));
     }
-    
+
     node.replaceWith(fragment);
   });
 }
@@ -4177,18 +4259,18 @@ function showToast(message, type = 'info', duration = 3000) {
     toastContainer.className = 'toast-container';
     document.body.appendChild(toastContainer);
   }
-  
+
   injectToastStyles();
-  
+
   const toast = document.createElement('div');
   toast.className = `toast toast-${type}`;
   toast.textContent = message;
   toastContainer.appendChild(toast);
-  
+
   requestAnimationFrame(() => {
     toast.classList.add('visible');
   });
-  
+
   setTimeout(() => {
     toast.classList.remove('visible');
     setTimeout(() => {
@@ -4254,20 +4336,20 @@ function showLinkTooltipForAnchor(anchor) {
     hideLinkTooltip();
     return;
   }
-  
+
   const displayHref = isLocalFilePath(originalHref)
     ? (anchor.getAttribute('data-local-path') || extractLocalFilePath(originalHref))
     : originalHref;
-  
+
   if (!displayHref) {
     hideLinkTooltip();
     return;
   }
-  
+
   currentTooltipAnchor = anchor;
   tooltip.classList.remove('visible');
   tooltip.textContent = displayHref;
-  
+
   // Measure tooltip to position it within viewport
   tooltip.style.left = '0px';
   tooltip.style.top = '0px';
@@ -4275,7 +4357,7 @@ function showLinkTooltipForAnchor(anchor) {
   const tooltipRect = tooltip.getBoundingClientRect();
   const margin = 8;
   const viewportWidth = window.innerWidth || document.documentElement.clientWidth;
-  
+
   let left = rect.left + window.scrollX;
   if (left + tooltipRect.width + margin > window.scrollX + viewportWidth) {
     left = window.scrollX + viewportWidth - tooltipRect.width - margin;
@@ -4284,10 +4366,10 @@ function showLinkTooltipForAnchor(anchor) {
     left = window.scrollX + margin;
   }
   const top = rect.bottom + window.scrollY + margin;
-  
+
   tooltip.style.left = `${Math.max(left, margin)}px`;
   tooltip.style.top = `${top}px`;
-  
+
   requestAnimationFrame(() => {
     if (currentTooltipAnchor === anchor) {
       tooltip.classList.add('visible');
@@ -4416,7 +4498,7 @@ function injectHyperlinkDialogStyles() {
 function ensureHyperlinkDialog() {
   if (hyperlinkDialogElements) return hyperlinkDialogElements;
   injectHyperlinkDialogStyles();
-  
+
   const overlay = document.createElement('div');
   overlay.className = 'hyperlink-dialog-overlay';
   overlay.setAttribute('aria-hidden', 'true');
@@ -4433,22 +4515,22 @@ function ensureHyperlinkDialog() {
       </form>
     </div>
   `;
-  
+
   document.body.appendChild(overlay);
-  
+
   const dialog = overlay.querySelector('.hyperlink-dialog');
   const form = overlay.querySelector('.hyperlink-dialog-form');
   const input = overlay.querySelector('.hyperlink-dialog-input');
   const error = overlay.querySelector('.hyperlink-dialog-error');
   const cancelButton = overlay.querySelector('.hyperlink-dialog-cancel');
-  
+
   form.addEventListener('submit', (event) => {
     event.preventDefault();
     if (!hyperlinkDialogState || typeof hyperlinkDialogState.onSubmit !== 'function') {
       closeHyperlinkDialog('submit');
       return;
     }
-    
+
     const value = input.value || '';
     const helpers = {
       setError: (message) => {
@@ -4456,7 +4538,7 @@ function ensureHyperlinkDialog() {
       },
       close: () => closeHyperlinkDialog('submit')
     };
-    
+
     try {
       const result = hyperlinkDialogState.onSubmit(value, helpers);
       if (result && typeof result.then === 'function') {
@@ -4475,14 +4557,14 @@ function ensureHyperlinkDialog() {
       closeHyperlinkDialog('submit');
     }
   });
-  
+
   cancelButton.addEventListener('click', () => {
     if (hyperlinkDialogState && typeof hyperlinkDialogState.onCancel === 'function') {
       hyperlinkDialogState.onCancel();
     }
     closeHyperlinkDialog('cancel');
   });
-  
+
   overlay.addEventListener('click', (event) => {
     if (event.target === overlay) {
       if (hyperlinkDialogState && typeof hyperlinkDialogState.onCancel === 'function') {
@@ -4491,7 +4573,7 @@ function ensureHyperlinkDialog() {
       closeHyperlinkDialog('cancel');
     }
   });
-  
+
   overlay.addEventListener('keydown', (event) => {
     if (event.key === 'Escape') {
       event.preventDefault();
@@ -4501,7 +4583,7 @@ function ensureHyperlinkDialog() {
       closeHyperlinkDialog('cancel');
     }
   });
-  
+
   hyperlinkDialogElements = { overlay, dialog, form, input, error, cancelButton };
   return hyperlinkDialogElements;
 }
@@ -4509,24 +4591,24 @@ function ensureHyperlinkDialog() {
 function openHyperlinkDialog(options = {}) {
   const elements = ensureHyperlinkDialog();
   const { overlay, input, error } = elements;
-  
+
   hyperlinkDialogState = {
     onSubmit: typeof options.onSubmit === 'function' ? options.onSubmit : null,
     onCancel: typeof options.onCancel === 'function' ? options.onCancel : null
   };
-  
+
   hyperlinkDialogPreviousActiveElement = document.activeElement instanceof HTMLElement
     ? document.activeElement
     : null;
-  
+
   const placeholder = options.placeholder || '例: https://example.com または C:\\path\\file.txt';
   input.setAttribute('placeholder', placeholder);
   input.value = options.defaultValue || '';
   error.textContent = '';
-  
+
   overlay.classList.add('visible');
   overlay.setAttribute('aria-hidden', 'false');
-  
+
   requestAnimationFrame(() => {
     input.focus();
     input.select();
@@ -4536,14 +4618,14 @@ function openHyperlinkDialog(options = {}) {
 function closeHyperlinkDialog() {
   if (!hyperlinkDialogElements) return;
   const { overlay, error, input } = hyperlinkDialogElements;
-  
+
   overlay.classList.remove('visible');
   overlay.setAttribute('aria-hidden', 'true');
   error.textContent = '';
   input.value = '';
-  
+
   hyperlinkDialogState = null;
-  
+
   if (hyperlinkDialogPreviousActiveElement && typeof hyperlinkDialogPreviousActiveElement.focus === 'function') {
     hyperlinkDialogPreviousActiveElement.focus();
   }
@@ -4654,7 +4736,7 @@ function injectDeadlineDialogStyles() {
 function ensureDeadlineDialog() {
   if (deadlineDialogElements) return deadlineDialogElements;
   injectDeadlineDialogStyles();
-  
+
   const overlay = document.createElement('div');
   overlay.className = 'deadline-dialog-overlay';
   overlay.setAttribute('aria-hidden', 'true');
@@ -4672,23 +4754,23 @@ function ensureDeadlineDialog() {
       </form>
     </div>
   `;
-  
+
   document.body.appendChild(overlay);
-  
+
   const dialog = overlay.querySelector('.deadline-dialog');
   const form = overlay.querySelector('.deadline-dialog-form');
   const input = overlay.querySelector('.deadline-dialog-input');
   const error = overlay.querySelector('.deadline-dialog-error');
   const clearButton = overlay.querySelector('.deadline-dialog-clear');
   const cancelButton = overlay.querySelector('.deadline-dialog-cancel');
-  
+
   form.addEventListener('submit', (event) => {
     event.preventDefault();
     if (!deadlineDialogState || typeof deadlineDialogState.onSubmit !== 'function') {
       closeDeadlineDialog('submit');
       return;
     }
-    
+
     const value = input.value || '';
     const helpers = {
       setError: (message) => {
@@ -4696,7 +4778,7 @@ function ensureDeadlineDialog() {
       },
       close: () => closeDeadlineDialog('submit')
     };
-    
+
     try {
       const result = deadlineDialogState.onSubmit(value, helpers);
       if (result && typeof result.then === 'function') {
@@ -4715,26 +4797,26 @@ function ensureDeadlineDialog() {
       closeDeadlineDialog('submit');
     }
   });
-  
+
   clearButton.addEventListener('click', () => {
     input.value = '';
     if (deadlineDialogState && typeof deadlineDialogState.onSubmit === 'function') {
       const helpers = {
-        setError: () => {},
+        setError: () => { },
         close: () => closeDeadlineDialog('clear')
       };
       deadlineDialogState.onSubmit(null, helpers);
     }
     closeDeadlineDialog('clear');
   });
-  
+
   cancelButton.addEventListener('click', () => {
     if (deadlineDialogState && typeof deadlineDialogState.onCancel === 'function') {
       deadlineDialogState.onCancel();
     }
     closeDeadlineDialog('cancel');
   });
-  
+
   overlay.addEventListener('click', (event) => {
     if (event.target === overlay) {
       if (deadlineDialogState && typeof deadlineDialogState.onCancel === 'function') {
@@ -4743,7 +4825,7 @@ function ensureDeadlineDialog() {
       closeDeadlineDialog('cancel');
     }
   });
-  
+
   overlay.addEventListener('keydown', (event) => {
     if (event.key === 'Escape') {
       event.preventDefault();
@@ -4753,7 +4835,7 @@ function ensureDeadlineDialog() {
       closeDeadlineDialog('cancel');
     }
   });
-  
+
   deadlineDialogElements = { overlay, dialog, form, input, error, clearButton, cancelButton };
   return deadlineDialogElements;
 }
@@ -4761,22 +4843,22 @@ function ensureDeadlineDialog() {
 function openDeadlineDialog(options = {}) {
   const elements = ensureDeadlineDialog();
   const { overlay, input, error } = elements;
-  
+
   deadlineDialogState = {
     onSubmit: typeof options.onSubmit === 'function' ? options.onSubmit : null,
     onCancel: typeof options.onCancel === 'function' ? options.onCancel : null
   };
-  
+
   deadlineDialogPreviousActiveElement = document.activeElement instanceof HTMLElement
     ? document.activeElement
     : null;
-  
+
   input.value = options.currentDeadline || '';
   error.textContent = '';
-  
+
   overlay.classList.add('visible');
   overlay.setAttribute('aria-hidden', 'false');
-  
+
   requestAnimationFrame(() => {
     input.focus();
   });
@@ -4785,14 +4867,14 @@ function openDeadlineDialog(options = {}) {
 function closeDeadlineDialog() {
   if (!deadlineDialogElements) return;
   const { overlay, error, input } = deadlineDialogElements;
-  
+
   overlay.classList.remove('visible');
   overlay.setAttribute('aria-hidden', 'true');
   error.textContent = '';
   input.value = '';
-  
+
   deadlineDialogState = null;
-  
+
   if (deadlineDialogPreviousActiveElement && typeof deadlineDialogPreviousActiveElement.focus === 'function') {
     deadlineDialogPreviousActiveElement.focus();
   }
@@ -4847,7 +4929,7 @@ function sanitizeContentInPlace(root) {
 function sanitizeHtml(html) {
   const temp = document.createElement('div');
   temp.innerHTML = html;
-  
+
   const anchors = temp.querySelectorAll('a');
   anchors.forEach(anchor => {
     const existingOriginalHref = anchor.getAttribute('data-original-href');
@@ -4865,20 +4947,20 @@ function sanitizeHtml(html) {
       decorateAnchor(anchor, trimmed);
     }
   });
-  
+
   // Remove old character-level formatting (bold, color spans)
   // since we now use item-level decoration
   const boldElements = temp.querySelectorAll('b, strong');
   boldElements.forEach(el => {
     unwrapElement(el);
   });
-  
+
   const spanElements = Array.from(temp.querySelectorAll('span'));
   spanElements.forEach(span => {
     // Remove all formatting spans - we use item-level decoration now
     unwrapElement(span);
   });
-  
+
   const walker = document.createTreeWalker(temp, NodeFilter.SHOW_ELEMENT);
   const nodesToClean = [];
   let node;
@@ -4895,7 +4977,7 @@ function sanitizeHtml(html) {
       node.replaceWith(document.createTextNode(node.textContent));
     }
   });
-  
+
   return temp.innerHTML;
 }
 
@@ -4927,39 +5009,39 @@ function promptForHyperlink(content, item) {
 // Insert hyperlink into content
 function insertHyperlink(content, item, url) {
   if (!savedSelection) return;
-  
+
   // Capture state before inserting hyperlink
   captureStateForUndo('hyperlink', { itemId: item.id, oldText: item.text });
-  
+
   try {
     // Restore selection with validation
     const selection = window.getSelection();
     selection.removeAllRanges();
-    
+
     // Validate that the range is still valid
     if (!savedSelection.range.startContainer.isConnected) {
       console.error('Saved range is no longer valid');
       return;
     }
-    
+
     selection.addRange(savedSelection.range);
-    
+
     // Create anchor element
     const anchor = document.createElement('a');
     anchor.textContent = savedSelection.text;
     anchor.setAttribute('href', url);
     decorateAnchor(anchor, url);
-    
+
     // Replace selected text with anchor
     savedSelection.range.deleteContents();
     savedSelection.range.insertNode(anchor);
-    
+
     // Select the newly created link
     const newRange = document.createRange();
     newRange.selectNodeContents(anchor);
     selection.removeAllRanges();
     selection.addRange(newRange);
-    
+
     // Sanitize and update the item text with the new HTML content
     const sanitizedContent = sanitizeHtml(content.innerHTML);
     updateItem(item.id, { text: sanitizedContent }, undefined, { skipReload: true });
@@ -4972,13 +5054,13 @@ function insertHyperlink(content, item, url) {
 
 function removeHyperlink(anchor, content, item) {
   if (!anchor || !content) return;
-  
+
   // Capture state before removing hyperlink
   captureStateForUndo('remove_hyperlink', { itemId: item.id, oldText: item.text });
-  
+
   const textNode = document.createTextNode(anchor.textContent);
   anchor.replaceWith(textNode);
-  
+
   const selection = window.getSelection();
   if (selection) {
     const newRange = document.createRange();
@@ -4986,11 +5068,11 @@ function removeHyperlink(anchor, content, item) {
     selection.removeAllRanges();
     selection.addRange(newRange);
   }
-  
+
   if (content.dataset) {
     content.dataset.disableAutoLink = 'true';
   }
-  
+
   const sanitizedContent = sanitizeHtml(content.innerHTML);
   updateItem(item.id, { text: sanitizedContent, skipAutoLink: true }, undefined, { skipReload: true });
   content.focus();
@@ -5001,10 +5083,10 @@ function removeHyperlink(anchor, content, item) {
 function toggleCollapse(headingId) {
   const item = items.find(i => i.id === headingId);
   if (!item || item.type !== 'collapsible-heading') return;
-  
+
   const newCollapsedState = !item.collapsed;
   item.collapsed = newCollapsedState;
-  
+
   updateItem(item.id, { collapsed: newCollapsedState }, () => {
     render();
   }, { skipReload: true });
@@ -5014,7 +5096,7 @@ function toggleCollapse(headingId) {
 function getCollapsibleChildren(headingId) {
   const headingIndex = items.findIndex(i => i.id === headingId);
   if (headingIndex === -1) return [];
-  
+
   const children = [];
   for (let i = headingIndex + 1; i < items.length; i++) {
     const item = items[i];
@@ -5030,10 +5112,10 @@ function getCollapsibleChildren(headingId) {
 // Render all items
 function render() {
   list.innerHTML = '';
-  
+
   // Sort items by order
   items.sort((a, b) => a.order - b.order);
-  
+
   // Build a map of collapsed sections
   const collapsedSections = new Map();
   items.forEach(item => {
@@ -5042,7 +5124,7 @@ function render() {
       collapsedSections.set(item.id, children);
     }
   });
-  
+
   // Build a set of items under GTD headings for styling
   const gtdChildItems = new Set();
   items.forEach((item, index) => {
@@ -5050,15 +5132,15 @@ function render() {
       // Mark all items after this GTD heading until next heading or hr
       for (let i = index + 1; i < items.length; i++) {
         const nextItem = items[i];
-        if (nextItem.type === 'heading' || nextItem.type === 'collapsible-heading' || 
-            nextItem.type === 'gtd-heading' || nextItem.type === 'hr') {
+        if (nextItem.type === 'heading' || nextItem.type === 'collapsible-heading' ||
+          nextItem.type === 'gtd-heading' || nextItem.type === 'hr') {
           break;
         }
         gtdChildItems.add(nextItem.id);
       }
     }
   });
-  
+
   // Render all items, hiding those in collapsed sections
   items.forEach(item => {
     // Check if this item should be hidden
@@ -5069,18 +5151,18 @@ function render() {
         break;
       }
     }
-    
+
     if (!shouldHide) {
       const isGtdChild = gtdChildItems.has(item.id);
       renderItem(item, isGtdChild);
     }
   });
-  
+
   // If no items exist, show single input row
   if (items.length === 0) {
     addEmptyRow({ autoFocus: true });
   }
-  
+
   // Re-enable drag and drop if in reorder mode
   if (reorderMode) {
     enableDragAndDrop();
@@ -5094,26 +5176,26 @@ function renderItem(item, isGtdChild = false) {
   li.dataset.type = item.type;
   li.setAttribute('tabindex', '0');
   li.setAttribute('role', 'listitem');
-  
+
   // Add class if this item is under a GTD heading
   if (isGtdChild) {
     li.classList.add('gtd-child-item');
   }
-  
+
   if (item.checked && item.type === 'checkbox') {
     li.classList.add('completed');
   }
-  
+
   // Horizontal rule is special
   if (item.type === 'hr') {
     li.classList.add('hr');
     const deleteBtn = createDeleteButton(item.id);
     li.appendChild(deleteBtn);
-    
+
     list.appendChild(li);
     return;
   }
-  
+
   // Checkbox for checkbox type
   if (item.type === 'checkbox') {
     const checkbox = document.createElement('input');
@@ -5126,7 +5208,7 @@ function renderItem(item, isGtdChild = false) {
     });
     li.appendChild(checkbox);
   }
-  
+
   // Bullet for list type
   if (item.type === 'list') {
     const bullet = document.createElement('span');
@@ -5135,7 +5217,7 @@ function renderItem(item, isGtdChild = false) {
     bullet.setAttribute('aria-hidden', 'true');
     li.appendChild(bullet);
   }
-  
+
   let collapseIcon = null;
   // Collapse icon for collapsible-heading type
   if (item.type === 'collapsible-heading') {
@@ -5160,7 +5242,7 @@ function renderItem(item, isGtdChild = false) {
       }
     });
   }
-  
+
   // GTD icon for gtd-heading type
   let gtdIcon = null;
   if (item.type === 'gtd-heading') {
@@ -5169,23 +5251,23 @@ function renderItem(item, isGtdChild = false) {
     gtdIcon.textContent = '⚠️';
     gtdIcon.setAttribute('aria-label', 'GTD見出し');
     gtdIcon.setAttribute('role', 'img');
-    
+
     // Add hover event handlers for GTD procedure tooltip
-    gtdIcon.addEventListener('mouseenter', function() {
+    gtdIcon.addEventListener('mouseenter', function () {
       showGTDProcedureTooltip(gtdIcon);
     });
-    gtdIcon.addEventListener('mouseleave', function() {
+    gtdIcon.addEventListener('mouseleave', function () {
       hideGTDProcedureTooltip();
     });
   }
-  
+
   // Content (contenteditable)
   const content = document.createElement('div');
   content.className = 'task-content';
   content.contentEditable = 'true';
   content.setAttribute('role', 'textbox');
   content.setAttribute('aria-label', getAriaLabel(item.type));
-  
+
   // Apply decoration if present
   if (item.decoration && item.decoration.presetId) {
     const preset = getPreset(item.decoration.presetId);
@@ -5197,7 +5279,7 @@ function renderItem(item, isGtdChild = false) {
       content.classList.add('decorated');
     }
   }
-  
+
   // Use innerHTML to support hyperlinks, with sanitization to prevent XSS
   if (item.text) {
     // Check if text contains HTML tags
@@ -5216,7 +5298,7 @@ function renderItem(item, isGtdChild = false) {
   }
 
   // --- Patch: Make anchor clicks open in new window ---
-  content.addEventListener('click', function(e) {
+  content.addEventListener('click', function (e) {
     const anchor = e.target.closest('a');
     if (anchor && content.contains(anchor)) {
       e.preventDefault();
@@ -5226,10 +5308,10 @@ function renderItem(item, isGtdChild = false) {
       }
     }
   });
-  
+
   // Setup content event handlers
   setupContentHandlers(content, item, li);
-  
+
   if (item.type === 'collapsible-heading' && collapseIcon) {
     const headingWrapper = document.createElement('div');
     headingWrapper.className = 'collapsible-heading-wrapper';
@@ -5245,7 +5327,7 @@ function renderItem(item, isGtdChild = false) {
   } else {
     li.appendChild(content);
   }
-  
+
   // Deadline indicator
   if (item.deadline) {
     const deadlineDisplay = getDeadlineDisplay(item.deadline);
@@ -5265,15 +5347,15 @@ function renderItem(item, isGtdChild = false) {
       li.appendChild(deadlineSpan);
     }
   }
-// --- Deadline Tooltip ---
-let deadlineTooltip = null;
-let deadlineTooltipStylesInjected = false;
-let currentDeadlineTooltipTarget = null;
+  // --- Deadline Tooltip ---
+  let deadlineTooltip = null;
+  let deadlineTooltipStylesInjected = false;
+  let currentDeadlineTooltipTarget = null;
 
-function injectDeadlineTooltipStyles() {
-  if (deadlineTooltipStylesInjected) return;
-  const style = document.createElement('style');
-  style.textContent = `
+  function injectDeadlineTooltipStyles() {
+    if (deadlineTooltipStylesInjected) return;
+    const style = document.createElement('style');
+    style.textContent = `
 .deadline-tooltip {
   position: fixed;
   padding: 4px 8px;
@@ -5294,74 +5376,74 @@ function injectDeadlineTooltipStyles() {
   opacity: 1;
 }
 `;
-  document.head.appendChild(style);
-  deadlineTooltipStylesInjected = true;
-}
-
-function ensureDeadlineTooltip() {
-  if (deadlineTooltip) return deadlineTooltip;
-  injectDeadlineTooltipStyles();
-  deadlineTooltip = document.createElement('div');
-  deadlineTooltip.className = 'deadline-tooltip';
-  document.body.appendChild(deadlineTooltip);
-  return deadlineTooltip;
-}
-
-function showDeadlineTooltipForElement(element, text) {
-  if (!element || !text) return;
-  const tooltip = ensureDeadlineTooltip();
-  currentDeadlineTooltipTarget = element;
-  tooltip.classList.remove('visible');
-  tooltip.textContent = text;
-
-  // Position tooltip below the element, within viewport
-  tooltip.style.left = '0px';
-  tooltip.style.top = '0px';
-  const rect = element.getBoundingClientRect();
-  const tooltipRect = tooltip.getBoundingClientRect();
-  const margin = 8;
-  const viewportWidth = window.innerWidth || document.documentElement.clientWidth;
-
-  let left = rect.left + window.scrollX;
-  if (left + tooltipRect.width + margin > window.scrollX + viewportWidth) {
-    left = window.scrollX + viewportWidth - tooltipRect.width - margin;
+    document.head.appendChild(style);
+    deadlineTooltipStylesInjected = true;
   }
-  if (left < window.scrollX + margin) {
-    left = window.scrollX + margin;
+
+  function ensureDeadlineTooltip() {
+    if (deadlineTooltip) return deadlineTooltip;
+    injectDeadlineTooltipStyles();
+    deadlineTooltip = document.createElement('div');
+    deadlineTooltip.className = 'deadline-tooltip';
+    document.body.appendChild(deadlineTooltip);
+    return deadlineTooltip;
   }
-  const top = rect.bottom + window.scrollY + margin;
 
-  tooltip.style.left = `${Math.max(left, margin)}px`;
-  tooltip.style.top = `${top}px`;
+  function showDeadlineTooltipForElement(element, text) {
+    if (!element || !text) return;
+    const tooltip = ensureDeadlineTooltip();
+    currentDeadlineTooltipTarget = element;
+    tooltip.classList.remove('visible');
+    tooltip.textContent = text;
 
-  requestAnimationFrame(() => {
-    if (currentDeadlineTooltipTarget === element) {
-      tooltip.classList.add('visible');
+    // Position tooltip below the element, within viewport
+    tooltip.style.left = '0px';
+    tooltip.style.top = '0px';
+    const rect = element.getBoundingClientRect();
+    const tooltipRect = tooltip.getBoundingClientRect();
+    const margin = 8;
+    const viewportWidth = window.innerWidth || document.documentElement.clientWidth;
+
+    let left = rect.left + window.scrollX;
+    if (left + tooltipRect.width + margin > window.scrollX + viewportWidth) {
+      left = window.scrollX + viewportWidth - tooltipRect.width - margin;
     }
-  });
-}
+    if (left < window.scrollX + margin) {
+      left = window.scrollX + margin;
+    }
+    const top = rect.bottom + window.scrollY + margin;
 
-function hideDeadlineTooltip() {
-  currentDeadlineTooltipTarget = null;
-  if (deadlineTooltip) {
-    deadlineTooltip.classList.remove('visible');
+    tooltip.style.left = `${Math.max(left, margin)}px`;
+    tooltip.style.top = `${top}px`;
+
+    requestAnimationFrame(() => {
+      if (currentDeadlineTooltipTarget === element) {
+        tooltip.classList.add('visible');
+      }
+    });
   }
-}
 
-window.addEventListener('scroll', hideDeadlineTooltip, true);
-window.addEventListener('blur', hideDeadlineTooltip);
-  
+  function hideDeadlineTooltip() {
+    currentDeadlineTooltipTarget = null;
+    if (deadlineTooltip) {
+      deadlineTooltip.classList.remove('visible');
+    }
+  }
+
+  window.addEventListener('scroll', hideDeadlineTooltip, true);
+  window.addEventListener('blur', hideDeadlineTooltip);
+
   // Delete button
   const deleteBtn = createDeleteButton(item.id);
   li.appendChild(deleteBtn);
-  
+
   // Append to DOM
   list.appendChild(li);
 }
 
 // Get aria label based on type
 function getAriaLabel(type) {
-  switch(type) {
+  switch (type) {
     case 'heading': return '見出し';
     case 'collapsible-heading': return '折りたたみ見出し';
     case 'gtd-heading': return 'GTD見出し';
@@ -5379,15 +5461,15 @@ function getPlaceholder() {
 // Setup content event handlers
 function setupContentHandlers(content, item, li) {
   let originalText = item.text;
-  
+
   content.addEventListener('focus', () => {
     originalText = content.textContent;
   });
-  
+
   content.addEventListener('blur', () => {
     handleContentBlur(content, item, li);
   });
-  
+
   content.addEventListener('input', () => {
     if (content.dataset && content.dataset.disableAutoLink) {
       delete content.dataset.disableAutoLink;
@@ -5398,37 +5480,37 @@ function setupContentHandlers(content, item, li) {
     } else {
       content.setAttribute('data-placeholder', getPlaceholder());
     }
-    
+
     // Check for slash commands
     if (text.startsWith('/')) {
       handleSlashCommand(text, item, li, content);
     }
   });
-  
+
   content.addEventListener('keydown', (e) => {
     handleKeyDown(e, content, item, li);
   });
-  
+
   // Paste handling - strip formatting
   content.addEventListener('paste', (e) => {
     e.preventDefault();
     const text = e.clipboardData.getData('text/plain');
     document.execCommand('insertText', false, text);
   });
-  
+
   // Context menu for hyperlinks
   content.addEventListener('contextmenu', (e) => {
     handleContextMenu(e, content, item);
   });
-  
+
   // Handle clicks on hyperlinks
   content.addEventListener('click', async (e) => {
     const anchor = findAnchorFromEventTarget(e.target);
     if (!anchor) return;
-    
+
     const originalHref = getAnchorOriginalHref(anchor);
     const isLocal = isLocalFilePath(originalHref);
-    
+
     if (isLocal) {
       e.preventDefault();
       hideLinkTooltip();
@@ -5442,7 +5524,7 @@ function setupContentHandlers(content, item, li) {
       }
       return;
     }
-    
+
     // For web links, validate URL and allow default behavior (target="_blank") to open in OS default browser
     // This is especially important for webview contexts where target="_blank" opens in external browser
     if (originalHref && !isValidUrl(originalHref)) {
@@ -5453,7 +5535,7 @@ function setupContentHandlers(content, item, li) {
     }
     // Valid web link - don't prevent default, let the browser/webview handle it naturally with target="_blank"
   });
-  
+
   content.addEventListener('mousemove', (e) => {
     const anchor = findAnchorFromEventTarget(e.target);
     if (anchor) {
@@ -5462,7 +5544,7 @@ function setupContentHandlers(content, item, li) {
       hideLinkTooltip();
     }
   });
-  
+
   content.addEventListener('mouseleave', () => {
     hideLinkTooltip();
   });
@@ -5472,22 +5554,22 @@ function convertItemFormat(item, formatType, options = {}) {
   if (!item) return;
   const { clearText = false } = options;
   const updates = { type: formatType };
-  
+
   if (formatType === 'collapsible-heading') {
     updates.collapsed = false;
     item.collapsed = false;
   }
-  
+
   if (formatType === 'checkbox') {
     updates.checked = false;
     item.checked = false;
   }
-  
+
   if (clearText || formatType === 'hr') {
     updates.text = '';
     item.text = '';
   }
-  
+
   const focusAfterUpdate = () => {
     if (formatType === 'hr') {
       const nextItem = items.find(i => i.order > item.order);
@@ -5498,7 +5580,7 @@ function convertItemFormat(item, formatType, options = {}) {
       setTimeout(() => focusItem(item.id), 100);
     }
   };
-  
+
   updateItem(item.id, updates, focusAfterUpdate);
 }
 
@@ -5507,7 +5589,7 @@ function handleSlashCommand(text, item, li, content) {
   const trimmed = text.trim();
   const formatType = SLASH_COMMAND_MAP[trimmed];
   if (!formatType) return;
-  
+
   content.textContent = '';
   item.text = '';
   convertItemFormat(item, formatType, { clearText: true });
@@ -5518,7 +5600,7 @@ function handleKeyDown(e, content, item, li) {
   const isModifier = (e.ctrlKey || e.metaKey) && !e.altKey;
   if (isModifier && !e.shiftKey) {
     const key = e.key.toLowerCase();
-    
+
     // Check for decoration preset shortcuts
     const preset = decorationPresets.find(p => p.shortcut && p.shortcut.toLowerCase() === key);
     if (preset) {
@@ -5526,14 +5608,14 @@ function handleKeyDown(e, content, item, li) {
       applyDecorationPreset(item, preset.id);
       return;
     }
-    
+
     // Ctrl+0 to remove decoration
     if (key === '0') {
       e.preventDefault();
       applyDecorationPreset(item, null);
       return;
     }
-    
+
     // Keep Ctrl+K for hyperlink
     if (key === 'k') {
       e.preventDefault();
@@ -5543,7 +5625,7 @@ function handleKeyDown(e, content, item, li) {
       promptForHyperlink(content, item);
       return;
     }
-    
+
     // Ctrl+D for deadline setting
     if (key === 'd') {
       e.preventDefault();
@@ -5620,7 +5702,7 @@ function handleEmptyLineBackspace(item, content) {
     });
     return;
   }
-  
+
   if (item.type === 'text') {
     mergeWithPreviousLine(item, content);
   }
@@ -5631,16 +5713,16 @@ function mergeWithPreviousLine(item, content) {
   if (index <= 0) return;
   const prevItem = items[index - 1];
   if (!prevItem) return;
-  
+
   const prevContent = list.querySelector(`li[data-id="${prevItem.id}"] .task-content`);
   const prevText = prevContent ? prevContent.textContent : (prevItem.text || '');
   const currentText = content ? content.textContent : (item.text || '');
   const combinedText = prevText + currentText;
-  
+
   if (prevContent) {
     prevContent.textContent = combinedText;
   }
-  
+
   updateItem(prevItem.id, { text: combinedText }, () => {
     deleteItem(item.id);
     setTimeout(() => focusItem(prevItem.id, { position: 'end' }), 120);
@@ -5657,16 +5739,16 @@ function resolveNextType(item) {
 function handleEnter(item, li, content) {
   if (!content) return;
   const { beforeHtml, afterHtml, atEnd } = splitHtmlAtCaret(content);
-  
+
   // Sanitize the HTML content
   const sanitizedBefore = sanitizeHtml(beforeHtml);
   const sanitizedAfter = sanitizeHtml(afterHtml);
-  
+
   // Get plain text versions for checking if content is empty
   const tempBefore = document.createElement('div');
   tempBefore.innerHTML = sanitizedBefore;
   const beforeText = tempBefore.textContent.trim();
-  
+
   const tempAfter = document.createElement('div');
   tempAfter.innerHTML = sanitizedAfter;
   const afterText = tempAfter.textContent.trim();
@@ -5674,7 +5756,7 @@ function handleEnter(item, li, content) {
   // Special handling for heading types at the beginning of the line
   const isHeadingType = ['heading', 'collapsible-heading', 'gtd-heading'].includes(item.type);
   const isAtBeginning = !beforeText && afterText;
-  
+
   if (isHeadingType && isAtBeginning) {
     // For heading lines with cursor at the beginning:
     // Insert a blank line BEFORE the current heading, keeping the heading content as-is
@@ -5691,7 +5773,7 @@ function handleEnter(item, li, content) {
 
   // Save the deadline before it gets cleared by updateItem
   const savedDeadline = shouldMoveDeadline ? item.deadline : null;
-  
+
   const insertNextRow = (nextTypeValue, textForNextRow) => {
     const insertOptions = { allowEmpty: true, skipReload: true };
     // If deadline should move to new item, use the saved deadline value
@@ -5729,7 +5811,7 @@ function handleEnter(item, li, content) {
       proceed();
     }
   };
-  
+
   if (!atEnd) {
     // Update current line with the content before caret (preserving HTML)
     content.innerHTML = sanitizedBefore;
@@ -5743,7 +5825,7 @@ function handleEnter(item, li, content) {
     commitAndInsert(sanitizedBefore, nextType, sanitizedAfter);
     return;
   }
-  
+
   // At end of line - keep current content as is
   const currentHtml = sanitizeHtml(content.innerHTML);
   if (beforeText) {
@@ -5758,25 +5840,25 @@ function handleEnter(item, li, content) {
 // Handle content blur
 function handleContentBlur(content, item, li) {
   const autoLinkDisabled = content.dataset && content.dataset.disableAutoLink === 'true';
-  
+
   if (!autoLinkDisabled) {
     autoLinkContent(content);
   }
 
   sanitizeContentInPlace(content);
   const sanitizedContent = sanitizeHtml(content.innerHTML);
-  
+
   if (sanitizedContent) {
     content.removeAttribute('data-placeholder');
   } else {
     content.setAttribute('data-placeholder', getPlaceholder());
   }
-  
+
   const oldContent = item.text || '';
   if (sanitizedContent !== oldContent) {
     updateItem(item.id, { text: sanitizedContent, skipAutoLink: autoLinkDisabled });
   }
-  
+
   if (autoLinkDisabled) {
     delete content.dataset.disableAutoLink;
   }
@@ -5802,14 +5884,14 @@ function addEmptyRow(options = {}) {
   const li = document.createElement('li');
   li.className = 'empty-row';
   li.setAttribute('tabindex', '0');
-  
+
   const content = document.createElement('div');
   content.className = 'task-content';
   content.contentEditable = 'true';
   content.setAttribute('data-placeholder', getPlaceholder());
   content.setAttribute('role', 'textbox');
   content.setAttribute('aria-label', '新しい行');
-  
+
   content.addEventListener('input', () => {
     const text = content.textContent.trim();
     if (text) {
@@ -5821,7 +5903,7 @@ function addEmptyRow(options = {}) {
       }, { skipReload: true });
     }
   });
-  
+
   content.addEventListener('keydown', (e) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
@@ -5835,10 +5917,10 @@ function addEmptyRow(options = {}) {
       }
     }
   });
-  
+
   li.appendChild(content);
   list.appendChild(li);
-  
+
   if (autoFocus) {
     setTimeout(() => {
       content.focus();
@@ -5873,14 +5955,14 @@ function selectFromCursorToStart(content) {
   if (!content) return;
   const sel = window.getSelection();
   if (!sel || sel.rangeCount === 0) return;
-  
+
   const currentRange = sel.getRangeAt(0);
   if (!content.contains(currentRange.startContainer)) return;
-  
+
   const range = document.createRange();
   range.setStart(content, 0);
   range.setEnd(currentRange.startContainer, currentRange.startOffset);
-  
+
   sel.removeAllRanges();
   sel.addRange(range);
 }
@@ -5890,14 +5972,14 @@ function selectFromCursorToEnd(content) {
   if (!content) return;
   const sel = window.getSelection();
   if (!sel || sel.rangeCount === 0) return;
-  
+
   const currentRange = sel.getRangeAt(0);
   if (!content.contains(currentRange.startContainer)) return;
-  
+
   const range = document.createRange();
   range.setStart(currentRange.startContainer, currentRange.startOffset);
   range.setEndAfter(content.lastChild || content);
-  
+
   sel.removeAllRanges();
   sel.addRange(range);
 }
@@ -5914,7 +5996,7 @@ function focusItem(id, options = {}) {
         content.focus();
         const range = document.createRange();
         const sel = window.getSelection();
-        
+
         // If offset is specified, try to position cursor at that offset
         if (typeof offset === 'number') {
           const targetOffset = Math.min(offset, content.textContent.length);
@@ -5927,7 +6009,7 @@ function focusItem(id, options = {}) {
             return;
           }
         }
-        
+
         // Otherwise use position-based focusing
         if (position === 'start') {
           range.setStart(content, 0);
@@ -5991,7 +6073,7 @@ function toggleReorderMode() {
   toggleBtn.setAttribute('aria-pressed', reorderMode ? 'true' : 'false');
   toggleBtn.setAttribute('aria-label', reorderMode ? activeLabel : inactiveLabel);
   toggleBtn.setAttribute('title', reorderMode ? activeLabel : inactiveLabel);
-  
+
   if (reorderMode) {
     document.body.classList.add('reorder-mode');
     enableDragAndDrop();
@@ -6014,7 +6096,7 @@ function enableDragAndDrop() {
     li.addEventListener('dragenter', handleDragEnter);
     li.addEventListener('dragleave', handleDragLeave);
     li.addEventListener('drop', handleDrop);
-    
+
     // Disable content editing
     const content = li.querySelector('.task-content');
     if (content) {
@@ -6035,7 +6117,7 @@ function disableDragAndDrop() {
     li.removeEventListener('dragleave', handleDragLeave);
     li.removeEventListener('drop', handleDrop);
     li.classList.remove('dragging', 'drag-over', 'drag-over-bottom');
-    
+
     // Re-enable content editing
     const content = li.querySelector('.task-content');
     if (content) {
@@ -6055,13 +6137,13 @@ function handleDragStart(e) {
 
 function handleDragEnd(e) {
   this.classList.remove('dragging');
-  
+
   // Remove all drag-over classes
   const lis = list.querySelectorAll('li[data-id]');
   lis.forEach(li => {
     li.classList.remove('drag-over', 'drag-over-bottom');
   });
-  
+
   draggedElement = null;
   draggedOverElement = null;
 }
@@ -6074,23 +6156,23 @@ function handleDragOver(e) {
 
 function handleDragEnter(e) {
   if (this === draggedElement) return;
-  
+
   const rect = this.getBoundingClientRect();
   const midpoint = rect.top + rect.height / 2;
-  
+
   // Remove previous drag-over classes
   const lis = list.querySelectorAll('li[data-id]');
   lis.forEach(li => {
     li.classList.remove('drag-over', 'drag-over-bottom');
   });
-  
+
   // Determine if we're dragging over top or bottom half
   if (e.clientY < midpoint) {
     this.classList.add('drag-over');
   } else {
     this.classList.add('drag-over-bottom');
   }
-  
+
   draggedOverElement = this;
 }
 
@@ -6098,7 +6180,7 @@ function handleDragLeave(e) {
   // Check if we're leaving the current element (not just a child)
   const rect = this.getBoundingClientRect();
   if (e.clientX < rect.left || e.clientX >= rect.right ||
-      e.clientY < rect.top || e.clientY >= rect.bottom) {
+    e.clientY < rect.top || e.clientY >= rect.bottom) {
     this.classList.remove('drag-over', 'drag-over-bottom');
   }
 }
@@ -6106,79 +6188,84 @@ function handleDragLeave(e) {
 function handleDrop(e) {
   e.stopPropagation();
   e.preventDefault();
-  
+
   if (draggedElement === this) {
     return false;
   }
-  
+
   const rect = this.getBoundingClientRect();
   const midpoint = rect.top + rect.height / 2;
   const insertBefore = e.clientY < midpoint;
-  
+
   // Move the dragged element in the DOM
   if (insertBefore) {
     this.parentNode.insertBefore(draggedElement, this);
   } else {
     this.parentNode.insertBefore(draggedElement, this.nextSibling);
   }
-  
+
   // Update order in the backend
   reorderItems();
-  
+
   return false;
 }
 
 // Initialize
-window.addEventListener('load', () => {
-  // Check if user is logged in
-  fetch('api.php?action=check_session')
-    .then(r => r.json())
-    .then(data => {
-      if (data.logged_in && data.uid) {
-        // User is already logged in
-        userID = data.uid;
-        isLoggedIn = true;
-        initializeApp();
-      } else {
-        // Show login screen
-        showLoginScreen();
-      }
-    })
-    .catch(() => {
-      // Error checking session, show login screen
-      showLoginScreen();
-    });
-  
+window.addEventListener('load', async () => {
+  try {
+    // Check if user is logged in via session
+    const sessionResponse = await fetch('api.php?action=check_session');
+    const sessionData = await sessionResponse.json();
+
+    if (sessionData.logged_in && sessionData.uid) {
+      // User is already logged in via session
+      userID = sessionData.uid;
+      isLoggedIn = true;
+      initializeApp();
+      return;
+    }
+
+    // Check for remember me cookie (only for pre-filling, handled in showLoginScreen)
+    // Auto-login is disabled as per new requirements
+
+    // Show login screen
+    showLoginScreen();
+  } catch (err) {
+    console.error('Initialization error:', err);
+    // Error checking session, show login screen
+    showLoginScreen();
+  }
+
   // Setup reorder toggle button
   const toggleBtn = document.getElementById('reorderToggle');
   if (toggleBtn) {
     toggleBtn.setAttribute('aria-pressed', 'false');
     toggleBtn.addEventListener('click', toggleReorderMode);
   }
-  
+
   // Setup settings button
   const settingsBtn = document.getElementById('settingsToggle');
   if (settingsBtn) {
     settingsBtn.addEventListener('click', showSettingsDialog);
   }
-  
+
   // Setup global keyboard shortcuts for undo/redo (when not focused on editable elements)
   // This is separate from the content-specific handlers to provide global shortcuts
   document.addEventListener('keydown', (e) => {
     // Only handle if not in an input, textarea, or contenteditable
     const target = e.target;
-    const isEditable = target.isContentEditable || 
-                      target.tagName === 'INPUT' || 
-                      target.tagName === 'TEXTAREA';
-    
+    const isEditable = target.isContentEditable ||
+      target.tagName === 'INPUT' ||
+      target.tagName === 'TEXTAREA';
+
     // Undo: Ctrl+Z (or Cmd+Z on Mac)
     if (e.key === 'z' && (e.ctrlKey || e.metaKey) && !e.shiftKey && !isEditable) {
       e.preventDefault();
       performUndo();
     }
     // Redo: Ctrl+Y or Ctrl+Shift+Z (or Cmd+Y / Cmd+Shift+Z on Mac)
-    else if (((e.key === 'y' && (e.ctrlKey || e.metaKey)) || 
-              (e.key === 'z' && (e.ctrlKey || e.metaKey) && e.shiftKey)) && !isEditable) {
+    else if (((e.key === 'y' && (e.ctrlKey || e.metaKey)) ||
+      (e.key === 'z' && (e.ctrlKey || e.metaKey) && e.shiftKey)) && !isEditable) {
       e.preventDefault();
       performRedo();
     }
