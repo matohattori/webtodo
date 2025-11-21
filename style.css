@@ -592,10 +592,6 @@ body.mobile-device textarea {
     position: relative;
   }
   
-  body.mobile-device html {
-    -webkit-text-size-adjust: 100%;
-  }
-  
   /* Ensure contenteditable areas work smoothly on iOS */
   body.mobile-device .task-content {
     -webkit-user-select: text;
