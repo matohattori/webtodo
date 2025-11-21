@@ -2193,8 +2193,8 @@ function captureStateForUndo(actionType, data) {
   // Clear redo stack when a new action is performed
   redoStack = [];
 
-  // Limit undo stack size to prevent memory issues
-  if (undoStack.length > 100) {
+  // Limit undo stack size to prevent memory issues (maximum 20 as per spec)
+  if (undoStack.length > 20) {
     undoStack.shift();
   }
 }
@@ -2220,8 +2220,7 @@ function performUndo() {
   // Restore the previous state
   items = lastAction.itemsSnapshot.map(item => ({ ...item }));
 
-  // Just render without syncing to backend
-  // The state will be synced on next explicit operation
+  // Render to update UI
   render();
 
   return true;
@@ -2248,8 +2247,7 @@ function performRedo() {
   // Restore the redo state
   items = redoAction.itemsSnapshot.map(item => ({ ...item }));
 
-  // Just render without syncing to backend
-  // The state will be synced on next explicit operation
+  // Render to update UI
   render();
 
   return true;

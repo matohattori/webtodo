@@ -574,7 +574,9 @@ body.reorder-mode .task-content {
 }
 
 body.reorder-mode .delete {
-  display: none;
+  /* Keep delete buttons visible in reorder mode */
+  opacity: 1;
+  pointer-events: auto;
 }
 
 body.reorder-mode input[type="checkbox"] {
