@@ -4,12 +4,23 @@
 // deadline: ISO date string or null
 // collapsed: boolean (only for collapsible-heading)
 
-// Detect iOS Safari for special handling
+// Detect iOS Safari for special handling using feature detection
+// iOS Safari has specific behaviors with contenteditable and focus
 function isIOSSafari() {
-  const ua = navigator.userAgent;
-  const isIOS = /iPad|iPhone|iPod/.test(ua) && !window.MSStream;
-  const isSafari = /Safari/.test(ua) && !/Chrome|CriOS|FxiOS|EdgiOS/.test(ua);
-  return isIOS && isSafari;
+  // Feature detection approach: check for iOS-specific features
+  const hasIOSFeatures = (
+    'ontouchstart' in window &&
+    CSS.supports('-webkit-touch-callout', 'none') &&
+    !window.MSStream
+  );
+  
+  // Additional check: iOS Safari has specific document.body behavior
+  const likelyIOSSafari = hasIOSFeatures && (
+    navigator.maxTouchPoints > 1 ||
+    'standalone' in navigator
+  );
+  
+  return likelyIOSSafari;
 }
 
 // User ID Management for per-user database separation
@@ -6009,8 +6020,8 @@ function focusItem(id, options = {}) {
         // On iOS Safari, ensure element is focusable and force focus
         if (isIOSSafari()) {
           content.setAttribute('contenteditable', 'true');
-          // Force a synchronous focus
-          content.focus({ preventScroll: false });
+          // Force a synchronous focus (let browser scroll to element naturally)
+          content.focus();
           
           // Immediately set cursor position
           requestAnimationFrame(() => {
