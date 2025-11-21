@@ -477,8 +477,8 @@ button.delete:hover {
   color: #CCC;
 }
 
-/* Mobile responsiveness */
-@media (max-width: 768px) {
+/* Mobile responsiveness - only for actual touch devices, not desktop WebView2 */
+@media (max-width: 768px) and (pointer: coarse), (max-width: 768px) and (hover: none) {
   body {
     padding: 12px 8px;
     font-size: 14px;
@@ -598,7 +598,7 @@ button.delete:hover {
 
 /* iPhone / iOS Safari specific optimizations */
 @supports (-webkit-touch-callout: none) {
-  @media (max-width: 768px) {
+  @media (max-width: 768px) and (pointer: coarse), (max-width: 768px) and (hover: none) {
     /* iOS Safari specific fixes */
     .container {
       /* Enable smooth scrolling within container */

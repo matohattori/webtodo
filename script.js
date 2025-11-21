@@ -21,7 +21,11 @@ function isIOSSafari() {
     'standalone' in navigator
   );
   
-  return likelyIOSSafari;
+  // Exclude WebView2 (desktop app with touch support but pointer: fine)
+  // WebView2 reports pointer: fine, whereas mobile Safari reports pointer: coarse
+  const isDesktopWebView = window.matchMedia('(pointer: fine) and (hover: hover)').matches;
+  
+  return likelyIOSSafari && !isDesktopWebView;
 }
 
 // User ID Management for per-user database separation
