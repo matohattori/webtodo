@@ -600,11 +600,6 @@ button.delete:hover {
 @supports (-webkit-touch-callout: none) {
   @media (max-width: 768px) {
     /* iOS Safari specific fixes */
-    body {
-      /* Prevent bounce effect at page edges */
-      overscroll-behavior-y: none;
-    }
-    
     .container {
       /* Enable smooth scrolling within container */
       -webkit-overflow-scrolling: touch;

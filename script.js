@@ -14,7 +14,8 @@ function isIOSSafari() {
     !window.MSStream
   );
   
-  // Additional check: iOS Safari has specific document.body behavior
+  // Additional check: maxTouchPoints > 1 indicates multi-touch device
+  // 'standalone' in navigator is iOS-specific property for PWAs
   const likelyIOSSafari = hasIOSFeatures && (
     navigator.maxTouchPoints > 1 ||
     'standalone' in navigator
@@ -6019,7 +6020,10 @@ function focusItem(id, options = {}) {
       if (content) {
         // On iOS Safari, ensure element is focusable and force focus
         if (isIOSSafari()) {
-          content.setAttribute('contenteditable', 'true');
+          // Ensure contenteditable is set (should already be, but verify for iOS Safari)
+          if (content.getAttribute('contenteditable') !== 'true') {
+            content.setAttribute('contenteditable', 'true');
+          }
           // Force a synchronous focus (let browser scroll to element naturally)
           content.focus();
           
