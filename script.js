@@ -1964,7 +1964,9 @@ title.style.cssText = 'margin: 0 0 12px; font-size: 16px; text-align: center;';
     font-size: 14px;
   `;
   
-  logoutBtn.onclick = async () => {
+  logoutBtn.addEventListener('click', async (e) => {
+    e.preventDefault();
+    e.stopPropagation();
     try {
       // Don't clear the remember cookie - keep username for next login
       // The backend will invalidate the token
@@ -1974,7 +1976,7 @@ title.style.cssText = 'margin: 0 0 12px; font-size: 16px; text-align: center;';
       console.error('Logout error:', err);
       window.location.reload();
     }
-  };
+  });
   
   const closeBtn = document.createElement('button');
   closeBtn.textContent = '閉じる';
