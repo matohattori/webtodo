@@ -473,109 +473,108 @@ button.delete:hover {
   color: #CCC;
 }
 
-/* Mobile responsiveness */
-@media (max-width: 768px) {
-  body {
-    padding: 8px;
-    font-size: 14px;
-  }
-  
-  .container {
-    padding: 12px;
-    border-radius: 4px;
-    max-width: 100%;
-  }
-  
-  .reorder-toggle,
-  .settings-toggle {
-    right: 16px;
-    width: 32px;
-    height: 32px;
-    font-size: 14px;
-  }
-  
-  .reorder-toggle {
-    bottom: 54px;
-  }
-  
-  .settings-toggle {
-    bottom: 12px;
-  }
-  
-  li {
-    padding: 4px 3px;
-    min-height: 28px;
-    gap: 4px;
-  }
-  
-  .delete {
-    opacity: 0.7;
-    font-size: 18px;
-    padding: 4px 8px;
-  }
-  
-  .task-content {
-    font-size: 14px;
-    padding: 4px 6px;
-    line-height: 1.6;
-    min-height: 24px;
-  }
-  
-  input[type="checkbox"] {
-    width: 20px;
-    height: 20px;
-  }
-  
-  .list-bullet {
-    font-size: 18px;
-    width: 20px;
-  }
-  
-  /* Increase tap target size for buttons */
-  .btn {
-    min-height: 40px;
-    padding: 10px 16px;
-    font-size: 14px;
-  }
-  
-  /* Improve heading visibility */
-  li[data-type="heading"] .task-content,
-  li[data-type="collapsible-heading"] .task-content,
-  li[data-type="gtd-heading"] .task-content {
-    font-size: 15px;
-  }
-  
-  /* Improve collapse icon tap target */
-  .collapse-icon {
-    width: 28px;
-    height: 28px;
-    font-size: 14px;
-  }
-  
-  .gtd-icon {
-    width: 28px;
-    height: 28px;
-    font-size: 16px;
-  }
-  
-  /* Ensure dialogs fit on small screens */
-  .login-dialog,
-  .settings-dialog,
-  .task-org-reminder-dialog,
-  .gtd-reminder-dialog {
-    max-width: 90vw !important;
-    max-height: 85vh !important;
-    padding: 20px !important;
-  }
-  
-  /* Improve form inputs on mobile */
-  input[type="text"],
-  input[type="password"],
-  select,
-  textarea {
-    font-size: 16px !important; /* Prevents zoom on iOS */
-    padding: 10px 12px;
-  }
+/* Mobile responsiveness - only apply to real mobile devices */
+/* WebView2 and desktop apps should use desktop styles even with narrow windows */
+body.mobile-device {
+  padding: 8px;
+  font-size: 14px;
+}
+
+body.mobile-device .container {
+  padding: 12px;
+  border-radius: 4px;
+  max-width: 100%;
+}
+
+body.mobile-device .reorder-toggle,
+body.mobile-device .settings-toggle {
+  right: 16px;
+  width: 32px;
+  height: 32px;
+  font-size: 14px;
+}
+
+body.mobile-device .reorder-toggle {
+  bottom: 54px;
+}
+
+body.mobile-device .settings-toggle {
+  bottom: 12px;
+}
+
+body.mobile-device li {
+  padding: 4px 3px;
+  min-height: 28px;
+  gap: 4px;
+}
+
+body.mobile-device .delete {
+  opacity: 0.7;
+  font-size: 18px;
+  padding: 4px 8px;
+}
+
+body.mobile-device .task-content {
+  font-size: 14px;
+  padding: 4px 6px;
+  line-height: 1.6;
+  min-height: 24px;
+}
+
+body.mobile-device input[type="checkbox"] {
+  width: 20px;
+  height: 20px;
+}
+
+body.mobile-device .list-bullet {
+  font-size: 18px;
+  width: 20px;
+}
+
+/* Increase tap target size for buttons */
+body.mobile-device .btn {
+  min-height: 40px;
+  padding: 10px 16px;
+  font-size: 14px;
+}
+
+/* Improve heading visibility */
+body.mobile-device li[data-type="heading"] .task-content,
+body.mobile-device li[data-type="collapsible-heading"] .task-content,
+body.mobile-device li[data-type="gtd-heading"] .task-content {
+  font-size: 15px;
+}
+
+/* Improve collapse icon tap target */
+body.mobile-device .collapse-icon {
+  width: 28px;
+  height: 28px;
+  font-size: 14px;
+}
+
+body.mobile-device .gtd-icon {
+  width: 28px;
+  height: 28px;
+  font-size: 16px;
+}
+
+/* Ensure dialogs fit on small screens */
+body.mobile-device .login-dialog,
+body.mobile-device .settings-dialog,
+body.mobile-device .task-org-reminder-dialog,
+body.mobile-device .gtd-reminder-dialog {
+  max-width: 90vw !important;
+  max-height: 85vh !important;
+  padding: 20px !important;
+}
+
+/* Improve form inputs on mobile */
+body.mobile-device input[type="text"],
+body.mobile-device input[type="password"],
+body.mobile-device select,
+body.mobile-device textarea {
+  font-size: 16px !important; /* Prevents zoom on iOS */
+  padding: 10px 12px;
 }
 
 /* iOS Safari-specific optimizations */
@@ -584,38 +583,38 @@ button.delete:hover {
    WebKit browsers may also support it. This is acceptable as these optimizations
    are generally beneficial for all mobile WebKit browsers. */
 @supports (-webkit-touch-callout: none) {
-  @media (max-width: 768px) {
+  body.mobile-device {
     /* Prevent text size adjustment on orientation change (iOS) */
-    html {
-      -webkit-text-size-adjust: 100%;
-    }
+    -webkit-text-size-adjust: 100%;
     
     /* Prevent rubber band scrolling from interfering with UI */
-    body {
-      overflow-x: hidden;
-      position: relative;
-    }
-    
-    /* Ensure contenteditable areas work smoothly on iOS */
-    .task-content {
-      -webkit-user-select: text;
-      -webkit-touch-callout: default;
-    }
-    
-    /* Improve button touch targets for iOS */
-    button,
-    .btn,
-    input[type="checkbox"] {
-      -webkit-tap-highlight-color: rgba(74, 163, 255, 0.2);
-    }
-    
-    /* Better scrolling for dialogs on iOS */
-    .login-dialog,
-    .settings-dialog,
-    .task-org-reminder-dialog,
-    .gtd-reminder-dialog {
-      -webkit-overflow-scrolling: touch;
-    }
+    overflow-x: hidden;
+    position: relative;
+  }
+  
+  body.mobile-device html {
+    -webkit-text-size-adjust: 100%;
+  }
+  
+  /* Ensure contenteditable areas work smoothly on iOS */
+  body.mobile-device .task-content {
+    -webkit-user-select: text;
+    -webkit-touch-callout: default;
+  }
+  
+  /* Improve button touch targets for iOS */
+  body.mobile-device button,
+  body.mobile-device .btn,
+  body.mobile-device input[type="checkbox"] {
+    -webkit-tap-highlight-color: rgba(74, 163, 255, 0.2);
+  }
+  
+  /* Better scrolling for dialogs on iOS */
+  body.mobile-device .login-dialog,
+  body.mobile-device .settings-dialog,
+  body.mobile-device .task-org-reminder-dialog,
+  body.mobile-device .gtd-reminder-dialog {
+    -webkit-overflow-scrolling: touch;
   }
 }
 

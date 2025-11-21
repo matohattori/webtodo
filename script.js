@@ -21,8 +21,24 @@ function isIPhoneSafari() {
   return isIPhone && isSafari && isWebKit;
 }
 
-// Cache the detection result
+// Detect if running on a real mobile device (not just a narrow window)
+// This helps distinguish between mobile devices and desktop apps like WebView2
+function isMobileDevice() {
+  if (typeof window === 'undefined' || !navigator) return false;
+  
+  const ua = navigator.userAgent;
+  // Check for mobile devices (iPhone, iPad, iPod, Android)
+  const isMobile = /iPhone|iPad|iPod|Android/i.test(ua);
+  // WebView2 and desktop browsers should not trigger mobile styles
+  // even if the window is narrow
+  const isDesktopApp = /Electron|WebView2/i.test(ua);
+  
+  return isMobile && !isDesktopApp;
+}
+
+// Cache the detection results
 const IS_IPHONE_SAFARI = isIPhoneSafari();
+const IS_MOBILE_DEVICE = isMobileDevice();
 
 // User ID Management for per-user database separation
 let userID = null;
@@ -6269,6 +6285,13 @@ function handleDrop(e) {
 
 // Initialize
 window.addEventListener('load', async () => {
+  // Add device class to body for CSS targeting
+  // This allows us to apply mobile styles only to real mobile devices,
+  // not desktop apps like WebView2 with narrow windows
+  if (IS_MOBILE_DEVICE) {
+    document.body.classList.add('mobile-device');
+  }
+  
   try {
     // Check if user is logged in via session
     const sessionResponse = await fetch('api.php?action=check_session');
