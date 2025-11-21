@@ -5,11 +5,20 @@
 // collapsed: boolean (only for collapsible-heading)
 
 // Detect iPhone Safari for special handling
+// iOS Safari has known issues with programmatic focus and keyboard display
+// when DOM is being dynamically updated
 function isIPhoneSafari() {
+  if (typeof window === 'undefined' || !navigator) return false;
+  
   const ua = navigator.userAgent;
+  // Check for iPhone device
   const isIPhone = /iPhone/.test(ua);
+  // Check for Safari (not Chrome, Firefox, or Edge on iOS)
   const isSafari = /Safari/.test(ua) && !/CriOS|FxiOS|EdgiOS/.test(ua);
-  return isIPhone && isSafari;
+  // Check for iOS by looking for both iPhone and webkit
+  const isIOS = /iPhone|iPad|iPod/.test(ua) && /AppleWebKit/.test(ua);
+  
+  return isIPhone && isSafari && isIOS;
 }
 
 // Cache the detection result
@@ -5796,22 +5805,8 @@ function handleEnter(item, li, content) {
         // On iPhone Safari, we need a longer delay to ensure the DOM is updated and ready
         const focusDelay = IS_IPHONE_SAFARI ? 200 : 150;
         setTimeout(() => {
-          focusItem(newId, { position: 'start' });
-          
-          // On iPhone Safari, force focus again if it didn't stick
-          if (IS_IPHONE_SAFARI) {
-            setTimeout(() => {
-              const targetLi = list.querySelector(`li[data-id="${newId}"]`);
-              if (targetLi) {
-                const targetContent = targetLi.querySelector('.task-content');
-                if (targetContent && document.activeElement !== targetContent) {
-                  targetContent.focus();
-                  // Also trigger click to ensure keyboard opens
-                  targetContent.click();
-                }
-              }
-            }, 100);
-          }
+          // focusItem now handles the retry logic internally for iPhone Safari
+          focusItem(newId, { position: 'start', retry: true });
         }, focusDelay);
         return;
       }
@@ -6017,6 +6012,7 @@ function selectFromCursorToEnd(content) {
 function focusItem(id, options = {}) {
   const position = options.position || 'end';
   const offset = options.offset;
+  const retry = options.retry !== false; // Default to true
   const delay = IS_IPHONE_SAFARI ? 100 : 50;
   
   setTimeout(() => {
@@ -6064,7 +6060,20 @@ function focusItem(id, options = {}) {
         
         if (IS_IPHONE_SAFARI) {
           // Add additional delay for iPhone Safari to ensure focus is established
-          setTimeout(setSelection, 50);
+          setTimeout(() => {
+            setSelection();
+            
+            // Retry focus if it didn't stick (only on iPhone Safari and if retry is enabled)
+            if (retry) {
+              setTimeout(() => {
+                if (document.activeElement !== content) {
+                  content.focus();
+                  // Also trigger click to ensure keyboard opens
+                  content.click();
+                }
+              }, 100);
+            }
+          }, 50);
         } else {
           setSelection();
         }

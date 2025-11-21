@@ -578,38 +578,41 @@ button.delete:hover {
   }
 }
 
-/* iPhone-specific optimizations */
-@media (max-width: 768px) and (-webkit-min-device-pixel-ratio: 2) {
-  /* Prevent text size adjustment on orientation change */
-  html {
-    -webkit-text-size-adjust: 100%;
-  }
-  
-  /* Prevent rubber band scrolling from interfering with UI */
-  body {
-    overflow-x: hidden;
-    position: relative;
-  }
-  
-  /* Ensure contenteditable areas work smoothly on iOS */
-  .task-content {
-    -webkit-user-select: text;
-    -webkit-touch-callout: default;
-  }
-  
-  /* Improve button touch targets for iOS */
-  button,
-  .btn,
-  input[type="checkbox"] {
-    -webkit-tap-highlight-color: rgba(74, 163, 255, 0.2);
-  }
-  
-  /* Better scrolling for dialogs on iOS */
-  .login-dialog,
-  .settings-dialog,
-  .task-org-reminder-dialog,
-  .gtd-reminder-dialog {
-    -webkit-overflow-scrolling: touch;
+/* iOS Safari-specific optimizations */
+/* These optimizations help with iOS Safari's specific quirks */
+@supports (-webkit-touch-callout: none) {
+  @media (max-width: 768px) {
+    /* Prevent text size adjustment on orientation change (iOS) */
+    html {
+      -webkit-text-size-adjust: 100%;
+    }
+    
+    /* Prevent rubber band scrolling from interfering with UI */
+    body {
+      overflow-x: hidden;
+      position: relative;
+    }
+    
+    /* Ensure contenteditable areas work smoothly on iOS */
+    .task-content {
+      -webkit-user-select: text;
+      -webkit-touch-callout: default;
+    }
+    
+    /* Improve button touch targets for iOS */
+    button,
+    .btn,
+    input[type="checkbox"] {
+      -webkit-tap-highlight-color: rgba(74, 163, 255, 0.2);
+    }
+    
+    /* Better scrolling for dialogs on iOS */
+    .login-dialog,
+    .settings-dialog,
+    .task-org-reminder-dialog,
+    .gtd-reminder-dialog {
+      -webkit-overflow-scrolling: touch;
+    }
   }
 }
 
