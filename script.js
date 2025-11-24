@@ -6331,12 +6331,14 @@ window.addEventListener('load', async () => {
 
   // Setup global keyboard shortcuts for undo/redo (when not focused on editable elements)
   // This is separate from the content-specific handlers to provide global shortcuts
+  // In reorder mode, these shortcuts should work regardless of focus
   document.addEventListener('keydown', (e) => {
-    // Only handle if not in an input, textarea, or contenteditable
+    // In reorder mode, always allow undo/redo shortcuts
+    // Otherwise, only handle if not in an input, textarea, or contenteditable
     const target = e.target;
-    const isEditable = target.isContentEditable ||
+    const isEditable = !reorderMode && (target.isContentEditable ||
       target.tagName === 'INPUT' ||
-      target.tagName === 'TEXTAREA';
+      target.tagName === 'TEXTAREA');
 
     // Undo: Ctrl+Z (or Cmd+Z on Mac)
     if (e.key === 'z' && (e.ctrlKey || e.metaKey) && !e.shiftKey && !isEditable) {
