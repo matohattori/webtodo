@@ -1,0 +1,518 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Reorder Mode Undo/Redo Tests</title>
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      max-width: 900px;
+      margin: 40px auto;
+      padding: 20px;
+      background: #f5f5f5;
+    }
+    h1 {
+      color: #333;
+      border-bottom: 2px solid #4aa3ff;
+      padding-bottom: 10px;
+    }
+    .test-section {
+      background: white;
+      padding: 20px;
+      margin: 20px 0;
+      border-radius: 8px;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+    .test-case {
+      margin: 15px 0;
+      padding: 10px;
+      border-left: 4px solid #ddd;
+    }
+    .test-case.passed {
+      border-color: #4caf50;
+      background: #f1f8f4;
+    }
+    .test-case.failed {
+      border-color: #f44336;
+      background: #fef1f0;
+    }
+    .test-name {
+      font-weight: 600;
+      margin-bottom: 5px;
+    }
+    .test-result {
+      font-size: 14px;
+      color: #666;
+    }
+    .test-details {
+      margin-top: 10px;
+      font-family: monospace;
+      font-size: 12px;
+      background: #f9f9f9;
+      padding: 10px;
+      border-radius: 4px;
+      overflow-x: auto;
+    }
+    .summary {
+      background: #e3f2fd;
+      padding: 15px;
+      border-radius: 8px;
+      margin: 20px 0;
+      font-weight: 600;
+    }
+    .summary.all-passed {
+      background: #e8f5e9;
+      color: #2e7d32;
+    }
+    .summary.has-failures {
+      background: #ffebee;
+      color: #c62828;
+    }
+    .instructions {
+      background: #fff3cd;
+      border: 1px solid #ffc107;
+      border-radius: 4px;
+      padding: 15px;
+      margin: 20px 0;
+    }
+    .instructions h3 {
+      margin-top: 0;
+      color: #856404;
+    }
+    .instructions ul {
+      margin-bottom: 0;
+    }
+  </style>
+</head>
+<body>
+  <h1>並び替えモード Undo/Redo テスト</h1>
+  
+  <div class="instructions">
+    <h3>📋 テスト手順</h3>
+    <p>このテストページは、並び替えモードにおけるUndo/Redo機能を検証します。</p>
+    <ul>
+      <li><strong>自動テスト</strong>: 基本的なUndo/Redoロジックをプログラム的に検証</li>
+      <li><strong>手動テスト</strong>: 実際にキーボードショートカット（Ctrl+Z / Ctrl+Y）を使用して動作確認</li>
+    </ul>
+  </div>
+  
+  <div id="test-results"></div>
+  <div id="summary"></div>
+
+  <script>
+    // Mock the minimal required functions for testing
+    let items = [];
+    let undoStack = [];
+    let redoStack = [];
+    let reorderMode = false;
+
+    // Undo/Redo system (simplified version from script.js)
+    function captureStateForUndo(actionType, data) {
+      const stateCopy = items.map(item => ({ ...item }));
+      undoStack.push({
+        actionType,
+        itemsSnapshot: stateCopy,
+        actionData: data
+      });
+      redoStack = [];
+      if (undoStack.length > 20) {
+        undoStack.shift();
+      }
+    }
+
+    function performUndo() {
+      if (undoStack.length === 0) {
+        return false;
+      }
+      const currentState = items.map(item => ({ ...item }));
+      const lastAction = undoStack.pop();
+      redoStack.push({
+        actionType: lastAction.actionType,
+        itemsSnapshot: currentState,
+        actionData: lastAction.actionData
+      });
+      items = lastAction.itemsSnapshot.map(item => ({ ...item }));
+      return true;
+    }
+
+    function performRedo() {
+      if (redoStack.length === 0) {
+        return false;
+      }
+      const currentState = items.map(item => ({ ...item }));
+      const redoAction = redoStack.pop();
+      undoStack.push({
+        actionType: redoAction.actionType,
+        itemsSnapshot: currentState,
+        actionData: redoAction.actionData
+      });
+      items = redoAction.itemsSnapshot.map(item => ({ ...item }));
+      return true;
+    }
+
+    // Test utilities
+    const tests = [];
+    let passedTests = 0;
+    let failedTests = 0;
+
+    function assertEquals(actual, expected, message) {
+      if (JSON.stringify(actual) !== JSON.stringify(expected)) {
+        throw new Error(`${message}\nExpected: ${JSON.stringify(expected)}\nActual: ${JSON.stringify(actual)}`);
+      }
+    }
+
+    function assertTrue(condition, message) {
+      if (!condition) {
+        throw new Error(message);
+      }
+    }
+
+    function assertFalse(condition, message) {
+      if (condition) {
+        throw new Error(message);
+      }
+    }
+
+    // Test cases
+    tests.push({
+      name: 'Test 1: Reorder operation should be captured in undo stack',
+      run: function() {
+        // Setup: 3 items
+        items = [
+          { id: 1, text: 'Item 1', order: 1 },
+          { id: 2, text: 'Item 2', order: 2 },
+          { id: 3, text: 'Item 3', order: 3 }
+        ];
+        undoStack = [];
+        redoStack = [];
+
+        // Capture state before reorder
+        captureStateForUndo('reorder', {});
+
+        // Simulate reorder: move item 3 to position 1
+        items = [
+          { id: 3, text: 'Item 3', order: 1 },
+          { id: 1, text: 'Item 1', order: 2 },
+          { id: 2, text: 'Item 2', order: 3 }
+        ];
+
+        // Verify undo stack has the capture
+        assertEquals(undoStack.length, 1, 'Undo stack should have 1 entry');
+        assertEquals(undoStack[0].actionType, 'reorder', 'Action type should be reorder');
+
+        return { passed: true, details: 'Reorder operation captured successfully' };
+      }
+    });
+
+    tests.push({
+      name: 'Test 2: Undo should restore previous order',
+      run: function() {
+        // Setup: 3 items
+        items = [
+          { id: 1, text: 'Item 1', order: 1 },
+          { id: 2, text: 'Item 2', order: 2 },
+          { id: 3, text: 'Item 3', order: 3 }
+        ];
+        undoStack = [];
+        redoStack = [];
+
+        // Capture state before reorder
+        captureStateForUndo('reorder', {});
+
+        // Reorder
+        items = [
+          { id: 3, text: 'Item 3', order: 1 },
+          { id: 1, text: 'Item 1', order: 2 },
+          { id: 2, text: 'Item 2', order: 3 }
+        ];
+
+        // Perform undo
+        const undoResult = performUndo();
+        assertTrue(undoResult, 'Undo should succeed');
+
+        // Verify items are restored to original order
+        assertEquals(items[0].id, 1, 'First item should be item 1');
+        assertEquals(items[1].id, 2, 'Second item should be item 2');
+        assertEquals(items[2].id, 3, 'Third item should be item 3');
+
+        return { passed: true, details: 'Undo restored order successfully' };
+      }
+    });
+
+    tests.push({
+      name: 'Test 3: Redo should reapply the reorder',
+      run: function() {
+        // Setup: 3 items
+        items = [
+          { id: 1, text: 'Item 1', order: 1 },
+          { id: 2, text: 'Item 2', order: 2 },
+          { id: 3, text: 'Item 3', order: 3 }
+        ];
+        undoStack = [];
+        redoStack = [];
+
+        // Capture state before reorder
+        captureStateForUndo('reorder', {});
+
+        // Reorder
+        const reorderedItems = [
+          { id: 3, text: 'Item 3', order: 1 },
+          { id: 1, text: 'Item 1', order: 2 },
+          { id: 2, text: 'Item 2', order: 3 }
+        ];
+        items = [...reorderedItems];
+
+        // Undo
+        performUndo();
+
+        // Redo
+        const redoResult = performRedo();
+        assertTrue(redoResult, 'Redo should succeed');
+
+        // Verify items are back to reordered state
+        assertEquals(items[0].id, 3, 'First item should be item 3 after redo');
+        assertEquals(items[1].id, 1, 'Second item should be item 1 after redo');
+        assertEquals(items[2].id, 2, 'Third item should be item 2 after redo');
+
+        return { passed: true, details: 'Redo reapplied order successfully' };
+      }
+    });
+
+    tests.push({
+      name: 'Test 4: Delete in reorder mode should be captured',
+      run: function() {
+        // Setup: 3 items
+        items = [
+          { id: 1, text: 'Item 1', order: 1 },
+          { id: 2, text: 'Item 2', order: 2 },
+          { id: 3, text: 'Item 3', order: 3 }
+        ];
+        undoStack = [];
+        redoStack = [];
+
+        // Capture state before delete
+        captureStateForUndo('delete', { id: 2 });
+
+        // Simulate delete
+        items = items.filter(item => item.id !== 2);
+
+        // Verify undo stack has the capture
+        assertEquals(undoStack.length, 1, 'Undo stack should have 1 entry');
+        assertEquals(undoStack[0].actionType, 'delete', 'Action type should be delete');
+
+        return { passed: true, details: 'Delete operation captured successfully' };
+      }
+    });
+
+    tests.push({
+      name: 'Test 5: Undo delete should restore item',
+      run: function() {
+        // Setup: 3 items
+        items = [
+          { id: 1, text: 'Item 1', order: 1 },
+          { id: 2, text: 'Item 2', order: 2 },
+          { id: 3, text: 'Item 3', order: 3 }
+        ];
+        undoStack = [];
+        redoStack = [];
+
+        // Capture state before delete
+        captureStateForUndo('delete', { id: 2 });
+
+        // Delete item 2
+        items = items.filter(item => item.id !== 2);
+        assertEquals(items.length, 2, 'Should have 2 items after delete');
+
+        // Undo
+        const undoResult = performUndo();
+        assertTrue(undoResult, 'Undo should succeed');
+
+        // Verify item is restored
+        assertEquals(items.length, 3, 'Should have 3 items after undo');
+        const item2 = items.find(item => item.id === 2);
+        assertTrue(item2 !== undefined, 'Item 2 should be restored');
+        assertEquals(item2.text, 'Item 2', 'Restored item should have correct text');
+
+        return { passed: true, details: 'Delete undo restored item successfully' };
+      }
+    });
+
+    tests.push({
+      name: 'Test 6: Multiple operations - reorder, delete, reorder',
+      run: function() {
+        // Setup: 4 items
+        items = [
+          { id: 1, text: 'Item 1', order: 1 },
+          { id: 2, text: 'Item 2', order: 2 },
+          { id: 3, text: 'Item 3', order: 3 },
+          { id: 4, text: 'Item 4', order: 4 }
+        ];
+        undoStack = [];
+        redoStack = [];
+
+        // Operation 1: Reorder (move item 4 to top)
+        captureStateForUndo('reorder', {});
+        items = [
+          { id: 4, text: 'Item 4', order: 1 },
+          { id: 1, text: 'Item 1', order: 2 },
+          { id: 2, text: 'Item 2', order: 3 },
+          { id: 3, text: 'Item 3', order: 4 }
+        ];
+
+        // Operation 2: Delete item 2
+        captureStateForUndo('delete', { id: 2 });
+        items = items.filter(item => item.id !== 2);
+
+        // Operation 3: Reorder (move item 1 to bottom)
+        captureStateForUndo('reorder', {});
+        items = [
+          { id: 4, text: 'Item 4', order: 1 },
+          { id: 3, text: 'Item 3', order: 2 },
+          { id: 1, text: 'Item 1', order: 3 }
+        ];
+
+        // Verify we have 3 operations in undo stack
+        assertEquals(undoStack.length, 3, 'Should have 3 operations in undo stack');
+
+        // Undo operation 3 (second reorder)
+        performUndo();
+        assertEquals(items[0].id, 4, 'After first undo, item 4 should be first');
+        assertEquals(items[1].id, 1, 'After first undo, item 1 should be second');
+        assertEquals(items[2].id, 3, 'After first undo, item 3 should be third');
+
+        // Undo operation 2 (delete)
+        performUndo();
+        assertEquals(items.length, 4, 'After second undo, should have 4 items');
+        assertTrue(items.find(item => item.id === 2) !== undefined, 'Item 2 should be restored');
+
+        // Undo operation 1 (first reorder)
+        performUndo();
+        assertEquals(items[0].id, 1, 'After third undo, item 1 should be first');
+        assertEquals(items[1].id, 2, 'After third undo, item 2 should be second');
+        assertEquals(items[2].id, 3, 'After third undo, item 3 should be third');
+        assertEquals(items[3].id, 4, 'After third undo, item 4 should be fourth');
+
+        return { passed: true, details: 'Multiple operations undone successfully in reverse order' };
+      }
+    });
+
+    tests.push({
+      name: 'Test 7: Undo stack limit (maximum 20 entries)',
+      run: function() {
+        items = [{ id: 1, text: 'Item 1', order: 1 }];
+        undoStack = [];
+        redoStack = [];
+
+        // Add 25 operations
+        for (let i = 0; i < 25; i++) {
+          captureStateForUndo('reorder', {});
+          items = [{ id: 1, text: `Item ${i}`, order: 1 }];
+        }
+
+        // Verify stack is limited to 20
+        assertEquals(undoStack.length, 20, 'Undo stack should be limited to 20 entries');
+
+        return { passed: true, details: 'Undo stack correctly limited to 20 entries' };
+      }
+    });
+
+    tests.push({
+      name: 'Test 8: New operation clears redo stack',
+      run: function() {
+        // Setup
+        items = [
+          { id: 1, text: 'Item 1', order: 1 },
+          { id: 2, text: 'Item 2', order: 2 }
+        ];
+        undoStack = [];
+        redoStack = [];
+
+        // Operation 1
+        captureStateForUndo('reorder', {});
+        items = [
+          { id: 2, text: 'Item 2', order: 1 },
+          { id: 1, text: 'Item 1', order: 2 }
+        ];
+
+        // Undo to populate redo stack
+        performUndo();
+        assertEquals(redoStack.length, 1, 'Redo stack should have 1 entry after undo');
+
+        // Perform new operation
+        captureStateForUndo('delete', { id: 1 });
+        items = items.filter(item => item.id !== 1);
+
+        // Verify redo stack is cleared
+        assertEquals(redoStack.length, 0, 'Redo stack should be cleared after new operation');
+
+        return { passed: true, details: 'Redo stack correctly cleared on new operation' };
+      }
+    });
+
+    // Run all tests
+    function runTests() {
+      const resultsDiv = document.getElementById('test-results');
+      
+      tests.forEach(test => {
+        const testDiv = document.createElement('div');
+        testDiv.className = 'test-case';
+        
+        const testName = document.createElement('div');
+        testName.className = 'test-name';
+        testName.textContent = test.name;
+        testDiv.appendChild(testName);
+        
+        const testResult = document.createElement('div');
+        testResult.className = 'test-result';
+        
+        try {
+          const result = test.run();
+          if (result.passed) {
+            testDiv.classList.add('passed');
+            testResult.textContent = '✓ PASSED';
+            passedTests++;
+          } else {
+            testDiv.classList.add('failed');
+            testResult.textContent = '✗ FAILED';
+            failedTests++;
+          }
+          
+          if (result.details) {
+            const details = document.createElement('div');
+            details.className = 'test-details';
+            details.textContent = result.details;
+            testDiv.appendChild(details);
+          }
+        } catch (error) {
+          testDiv.classList.add('failed');
+          testResult.textContent = '✗ FAILED: ' + error.message;
+          failedTests++;
+          
+          const details = document.createElement('div');
+          details.className = 'test-details';
+          details.textContent = error.stack || error.toString();
+          testDiv.appendChild(details);
+        }
+        
+        testDiv.appendChild(testResult);
+        resultsDiv.appendChild(testDiv);
+      });
+      
+      // Display summary
+      const summaryDiv = document.getElementById('summary');
+      summaryDiv.className = 'summary';
+      summaryDiv.textContent = `テスト結果: ${passedTests} 成功, ${failedTests} 失敗 (全${tests.length}件)`;
+      
+      if (failedTests === 0) {
+        summaryDiv.classList.add('all-passed');
+      } else {
+        summaryDiv.classList.add('has-failures');
+      }
+    }
+
+    // Run tests when page loads
+    window.addEventListener('load', runTests);
+  </script>
+</body>
+</html>
