@@ -6210,6 +6210,7 @@ function handleDragStart(e) {
   // Create a custom drag image to ensure all content (including hyperlinks) is visible
   // The default drag ghost may not show anchor text due to user-select: none CSS
   const dragImage = this.cloneNode(true);
+  // Use same background color as body/container (#EAF4FF from style.css)
   dragImage.style.cssText = `
     position: absolute;
     top: -9999px;
@@ -6233,8 +6234,9 @@ function handleDragStart(e) {
   document.body.appendChild(dragImage);
   e.dataTransfer.setDragImage(dragImage, 10, 10);
   // Clean up the drag image element after a short delay
+  // Use remove() for safer cleanup in case element was already removed
   requestAnimationFrame(() => {
-    document.body.removeChild(dragImage);
+    dragImage.remove();
   });
 }
 
