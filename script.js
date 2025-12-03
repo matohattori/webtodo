@@ -6206,6 +6206,38 @@ function handleDragStart(e) {
   e.dataTransfer.effectAllowed = 'move';
   // Set a simple identifier instead of HTML content for security
   e.dataTransfer.setData('text/plain', this.dataset.id);
+  
+  // Create a custom drag image to ensure all content (including hyperlinks) is visible
+  // The default drag ghost may not show anchor text due to user-select: none CSS
+  const dragImage = this.cloneNode(true);
+  // Use same background color as body/container (#EAF4FF from style.css)
+  dragImage.style.cssText = `
+    position: absolute;
+    top: -9999px;
+    left: -9999px;
+    background: #EAF4FF;
+    padding: 4px 8px;
+    border-radius: 4px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+    opacity: 0.9;
+    max-width: 400px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  `;
+  // Ensure text is selectable in the drag image for proper rendering
+  const content = dragImage.querySelector('.task-content');
+  if (content) {
+    content.style.userSelect = 'text';
+    content.style.pointerEvents = 'auto';
+  }
+  document.body.appendChild(dragImage);
+  e.dataTransfer.setDragImage(dragImage, 10, 10);
+  // Clean up the drag image element after a short delay
+  // Use remove() for safer cleanup in case element was already removed
+  requestAnimationFrame(() => {
+    dragImage.remove();
+  });
 }
 
 function handleDragEnd(e) {
